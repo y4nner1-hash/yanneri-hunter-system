@@ -1,9 +1,15 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Solo Leveling Fitness HUD</title>
+    <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Solo Leveling HUD">
+    <link id="pwa-manifest-link" rel="manifest">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React and ReactDOM CDN -->
@@ -21,7 +27,53 @@
     </script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap');
-        
+
+        /* ============================================================
+           DESIGN TOKENS — Motion Profile: BOLD/KINETIC
+           (gamified RPG interface: longer, expressive motion is earned
+           on reward moments; UI-state feedback stays fast & precise)
+        ============================================================ */
+        :root {
+            --motion-fast: 130ms;      /* hover, focus, active, toggle */
+            --motion-base: 260ms;      /* modal/tab enter-exit */
+            --motion-slow: 420ms;      /* reward moments: level up, dungeon clear */
+            --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+            --ease-out: cubic-bezier(0, 0, 0.2, 1);
+            --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1); /* reward-only */
+
+            --radius-sm: 6px;   /* chips, badges */
+            --radius-md: 10px;  /* buttons, inputs */
+            --radius-lg: 14px;  /* cards */
+            --radius-xl: 18px;  /* panels, modals */
+
+            --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+            --space-6: 24px; --space-8: 32px; --space-12: 48px;
+        }
+
+        /* State-feedback transitions (hover/focus/active) use the fast token by default */
+        button, a, input, .transition-all {
+            transition-duration: var(--motion-fast);
+            transition-timing-function: var(--ease-standard);
+        }
+
+        /* Clear, on-brand keyboard focus (accessibility) — replaces invisible default outline */
+        button:focus-visible, a:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+            outline: 2px solid #22d3ee;
+            outline-offset: 2px;
+            border-radius: var(--radius-sm);
+        }
+        input:focus-visible { outline-offset: 0; }
+
+        /* Respect user preference: disable non-essential motion */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.001ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+
         .font-hud {
             font-family: 'Orbitron', sans-serif;
         }
@@ -30,8 +82,8 @@
         }
         /* Custom scrollbar */
         ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+            width: 4px;
+            height: 4px;
         }
         ::-webkit-scrollbar-track {
             background: #020617;
@@ -43,14 +95,41 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #3b82f6;
         }
+        /* Hide scrollbars for neat mobile tabs but keep scroll functionality */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* Animated Scanline for HUD */
+        .scanline {
+            width: 100%;
+            height: 100px;
+            background: linear-gradient(0deg, rgba(0,0,0,0) 0%, rgba(255,255,255,0.03) 50%, rgba(0,0,0,0) 100%);
+            opacity: 0.15;
+            position: absolute;
+            bottom: 100%;
+            animation: scanline 8s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes scanline {
+            0% { bottom: 100%; }
+            100% { bottom: -100px; }
+        }
+        @keyframes tabFadeIn {
+            0% { opacity: 0; transform: translateY(6px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
     </style>
 </head>
-<body class="bg-slate-950 text-gray-100 min-h-screen select-none font-sub">
+<body class="bg-slate-950 text-gray-100 min-h-screen select-none font-sub antialiased relative">
 
     <div id="root"></div>
 
     <script type="text/babel" data-presets="react-classic">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
         // --- CUSTOM INLINE SVG ICONS FOR OFFLINE COMPATIBILITY ---
         const IconShield = () => (
@@ -104,18 +183,39 @@
         const IconClock = () => (
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         );
+        const IconSettings = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        );
         const IconUser = () => (
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         );
+        const IconBell = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        );
 
         function App() {
-            // --- LOAD INITIAL PERSISTED STATE ---
-            const [playerName, setPlayerName] = useState(() => localStorage.getItem('sl_playerName') || "Hunter");
+            // --- DATA VERSION GATE: bump this whenever the app's data shape changes so users are prompted to re-enter data cleanly ---
+            const APP_DATA_VERSION = '2';
+
+            // --- STATE: ONBOARDING ---
+            const [hasOnboarded, setHasOnboarded] = useState(() => {
+                const storedVersion = localStorage.getItem('sl_dataVersion');
+                if (storedVersion !== APP_DATA_VERSION) return false; // new version → require fresh data entry
+                return localStorage.getItem('sl_hasOnboarded') === 'true';
+            });
+            const hydratedRef = useRef(false); // prevents any save-effect from firing before data has been read from storage
+
+            // --- STATE: USER DATA ---
+            const [playerName, setPlayerName] = useState(() => localStorage.getItem('sl_playerName') || "");
+            const [age, setAge] = useState(() => parseInt(localStorage.getItem('sl_age')) || 39);
+            const [height, setHeight] = useState(() => parseFloat(localStorage.getItem('sl_height')) || 178);
             const [currentWeight, setCurrentWeight] = useState(() => parseFloat(localStorage.getItem('sl_currentWeight')) || 86);
+            const [targetWeight, setTargetWeight] = useState(() => parseFloat(localStorage.getItem('sl_targetWeight')) || 75);
             const [maxPushups, setMaxPushups] = useState(() => parseInt(localStorage.getItem('sl_maxPushups')) || 5);
             const [waistCircumference, setWaistCircumference] = useState(() => parseFloat(localStorage.getItem('sl_waistCircumference')) || 95);
             
-            const [xp, setXp] = useState(() => parseInt(localStorage.getItem('sl_xp')) || 0);
+            // --- STATE: RPG SYSTEM ---
+            const [xp, setXp] = useState(() => parseInt(localStorage.getItem('sl_xp')) || 120);
             const [skillLevel, setSkillLevel] = useState(() => parseInt(localStorage.getItem('sl_skillLevel')) || 1);
             const xpToNextLevel = 500;
             
@@ -141,22 +241,80 @@
             const [timerCount, setTimerCount] = useState(60);
             const [timerActive, setTimerActive] = useState(false);
 
+            // --- STATE: AUTO RUN DUNGEON ---
+            const [autoDungeonActive, setAutoDungeonActive] = useState(false);
+            const [autoDungeonPhase, setAutoDungeonPhase] = useState('idle'); // idle, exercise, restEx, restRound, completed
+            const [autoRound, setAutoRound] = useState(1);
+            const [autoExIndex, setAutoExIndex] = useState(0);
+            const [autoFinisherIndex, setAutoFinisherIndex] = useState(0);
+            const [autoTimerCount, setAutoTimerCount] = useState(0);
+
             const [logs, setLogs] = useState(() => {
                 const saved = localStorage.getItem('sl_logs');
                 return saved ? JSON.parse(saved) : [{ date: 'Awal (Hari 1)', weight: 86, pushups: 5, waist: 95 }];
             });
 
+            // --- STATE: DEVICE-TIME DAY TRACKING & BOOT SPLASH ---
+            const [lastActiveDate, setLastActiveDate] = useState(() => localStorage.getItem('sl_lastActiveDate') || null);
+            const [showBootSplash, setShowBootSplash] = useState(false);
+            const bootCheckedRef = useRef(false);
+
             const [inputWeight, setInputWeight] = useState('');
             const [inputPushups, setInputPushups] = useState('');
             const [inputWaist, setInputWaist] = useState('');
+            const [inputArm, setInputArm] = useState('');
+            const [inputPlank, setInputPlank] = useState('');
+            const [inputSquat, setInputSquat] = useState('');
+
+            const [showSettings, setShowSettings] = useState(false);
+            const [settingsDraft, setSettingsDraft] = useState(null);
+            const wakeLockRef = useRef(null);
+
+            // --- STATE: ACHIEVEMENTS ---
+            const [unlockedAchievements, setUnlockedAchievements] = useState(() => {
+                const saved = localStorage.getItem('sl_achievements');
+                return saved ? JSON.parse(saved) : [];
+            });
+            const [startWeight, setStartWeight] = useState(() => parseFloat(localStorage.getItem('sl_startWeight')) || currentWeight);
+            const [startPushups, setStartPushups] = useState(() => {
+                const saved = localStorage.getItem('sl_startPushups');
+                return saved !== null ? parseInt(saved) : maxPushups;
+            });
+
+            // --- STATE: QUICK WATER LOG ---
+            const [waterMl, setWaterMl] = useState(() => parseInt(localStorage.getItem('sl_waterMl')) || 0);
+
+            // --- STATE: TOTAL DUNGEONS COMPLETED (used for trophy accuracy, separate from baseline log) ---
+            const [dungeonsCompletedTotal, setDungeonsCompletedTotal] = useState(() => parseInt(localStorage.getItem('sl_dungeonsCompletedTotal')) || 0);
+
+            // --- STATE: CUSTOM REMINDER HOURS ---
+            const [reminderHours, setReminderHours] = useState(() => {
+                const saved = localStorage.getItem('sl_reminderHours');
+                return saved ? JSON.parse(saved) : [18, 21, 23];
+            });
+
+            // --- STATE: PWA INSTALL PROMPT ---
+            const [installPrompt, setInstallPrompt] = useState(null);
+            const [isInstallable, setIsInstallable] = useState(false);
 
             const [soundEnabled, setSoundEnabled] = useState(true);
             const [systemAlert, setSystemAlert] = useState(null);
 
-            // --- SAVE TO LOCALSTORAGE ON CHANGES ---
+            // --- STATE: CINEMATIC OVERLAY (LEVEL UP / DUNGEON CLEAR) ---
+            const [cinematicEvent, setCinematicEvent] = useState(null); // { type: 'levelup'|'dungeonclear', payload }
+            const notifiedHoursRef = useRef({});
+            const [now, setNow] = useState(new Date());
+
+            // --- SAVE TO LOCALSTORAGE ON CHANGES (fires immediately, including right after onboarding) ---
             useEffect(() => {
+                if (!hasOnboarded) return;
+                localStorage.setItem('sl_hasOnboarded', 'true');
+                localStorage.setItem('sl_dataVersion', APP_DATA_VERSION);
                 localStorage.setItem('sl_playerName', playerName);
+                localStorage.setItem('sl_age', age);
+                localStorage.setItem('sl_height', height);
                 localStorage.setItem('sl_currentWeight', currentWeight);
+                localStorage.setItem('sl_targetWeight', targetWeight);
                 localStorage.setItem('sl_maxPushups', maxPushups);
                 localStorage.setItem('sl_waistCircumference', waistCircumference);
                 localStorage.setItem('sl_xp', xp);
@@ -168,7 +326,42 @@
                 localStorage.setItem('sl_penaltyClaimed', workoutPenaltyClaimed);
                 localStorage.setItem('sl_workoutCompletedToday', workoutCompletedToday);
                 localStorage.setItem('sl_logs', JSON.stringify(logs));
-            }, [playerName, currentWeight, maxPushups, waistCircumference, xp, skillLevel, stats, streak, isDisciplineGateUnlocked, dailyQuests, workoutPenaltyClaimed, workoutCompletedToday, logs]);
+                localStorage.setItem('sl_achievements', JSON.stringify(unlockedAchievements));
+                localStorage.setItem('sl_waterMl', waterMl);
+                localStorage.setItem('sl_dungeonsCompletedTotal', dungeonsCompletedTotal);
+                localStorage.setItem('sl_reminderHours', JSON.stringify(reminderHours));
+                if (!localStorage.getItem('sl_startWeight')) {
+                    localStorage.setItem('sl_startWeight', startWeight);
+                }
+                if (!localStorage.getItem('sl_startPushups')) {
+                    localStorage.setItem('sl_startPushups', startPushups);
+                }
+                hydratedRef.current = true;
+            }, [hasOnboarded, playerName, age, height, currentWeight, targetWeight, maxPushups, waistCircumference, xp, skillLevel, stats, streak, isDisciplineGateUnlocked, dailyQuests, workoutPenaltyClaimed, workoutCompletedToday, logs, unlockedAchievements, waterMl, dungeonsCompletedTotal, reminderHours, startWeight, startPushups]);
+
+            // --- HELPER: GET CURRENT RANK KEY (for daily quest scaling) ---
+            const getRankKey = () => currentWeight > 84 ? 'E' : currentWeight > 80 ? 'D' : 'C';
+
+            // --- DYNAMIC THEMING BY LEVEL / WEIGHT (RANK) ---
+            const getTheme = (weightOverride) => {
+                const w = weightOverride != null ? weightOverride : currentWeight;
+                if (w > 84) return { 
+                    name: 'RANK E (Recruit)', bg: 'bg-blue-600', text: 'text-blue-400', border: 'border-blue-500/50', 
+                    grad: 'from-blue-900 to-slate-900', glow: 'shadow-[0_0_15px_rgba(59,130,246,0.4)]',
+                    fill: '#3b82f6', subBg: 'bg-blue-950/40', textGlow: 'text-blue-400 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]'
+                };
+                if (w > 79) return { 
+                    name: 'RANK D (Elite)', bg: 'bg-purple-600', text: 'text-purple-400', border: 'border-purple-500/50', 
+                    grad: 'from-purple-900 to-slate-900', glow: 'shadow-[0_0_15px_rgba(168,85,247,0.4)]',
+                    fill: '#a855f7', subBg: 'bg-purple-950/40', textGlow: 'text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.5)]'
+                };
+                return { 
+                    name: 'RANK C (Shadow Monarch)', bg: 'bg-rose-600', text: 'text-rose-400', border: 'border-rose-500/50', 
+                    grad: 'from-rose-900 to-slate-900', glow: 'shadow-[0_0_15px_rgba(244,63,94,0.4)]',
+                    fill: '#f43f5e', subBg: 'bg-rose-950/40', textGlow: 'text-rose-400 drop-shadow-[0_0_8px_rgba(244,63,94,0.5)]'
+                };
+            };
+            const theme = getTheme();
 
             // --- AUDIO SYNTHESIS ENGINE ---
             const playSound = (type) => {
@@ -190,6 +383,29 @@
                         gain.connect(ctx.destination);
                         osc.start();
                         osc.stop(ctx.currentTime + 0.08);
+                    } else if (type === 'arise') {
+                        // Ominous Bass sweep
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sawtooth';
+                        osc.frequency.setValueAtTime(110, ctx.currentTime);
+                        osc.frequency.exponentialRampToValueAtTime(10, ctx.currentTime + 1.8);
+                        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.8);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start();
+                        osc.stop(ctx.currentTime + 1.8);
+
+                        // Web Speech API for "Arise" text-to-speech with low pitch
+                        if ('speechSynthesis' in window) {
+                            window.speechSynthesis.cancel();
+                            const utterance = new SpeechSynthesisUtterance("Arise.");
+                            utterance.pitch = 0.3;
+                            utterance.rate = 0.7;
+                            utterance.volume = 1;
+                            window.speechSynthesis.speak(utterance);
+                        }
                     } else if (type === 'levelUp') {
                         const now = ctx.currentTime;
                         const freqs = [523.25, 659.25, 783.99, 1046.50];
@@ -237,6 +453,17 @@
                         gain.connect(ctx.destination);
                         osc.start();
                         osc.stop(ctx.currentTime + 0.4);
+                    } else if (type === 'beep') {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(880, ctx.currentTime);
+                        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start();
+                        osc.stop(ctx.currentTime + 0.125);
                     }
                 } catch (e) {
                     console.warn("Audio Context blocked/unsupported:", e);
@@ -248,7 +475,7 @@
                 setSystemAlert({ title, message, isWarning });
             };
 
-            // --- SYSTEM RECOVERY TIMER ---
+            // --- SYSTEM RECOVERY TIMER (MANUAL) ---
             useEffect(() => {
                 let interval = null;
                 if (timerActive && timerCount > 0) {
@@ -263,17 +490,109 @@
                 return () => clearInterval(interval);
             }, [timerActive, timerCount]);
 
-            // --- GET DIFFICULTY BASED ON WEIGHT ---
-            const getRank = () => {
-                if (currentWeight > 84) return { rank: "RANK E (Beginner - Joint Friendly)", class: "text-red-400 border-red-500/50 bg-red-950/20" };
-                if (currentWeight > 80) return { rank: "RANK D (Intermediate-Beginner)", class: "text-amber-400 border-amber-500/50 bg-amber-950/20" };
-                return { rank: "RANK C (Intermediate / Shadow Monarch Recruit)", class: "text-cyan-400 border-cyan-500/50 bg-cyan-950/20" };
+            // --- SYSTEM RECOVERY / WORKOUT TIMER (AUTOMATIC DUNGEON SOLVER) ---
+            useEffect(() => {
+                let interval = null;
+                if (autoDungeonActive && autoTimerCount > 0) {
+                    interval = setInterval(() => {
+                        setAutoTimerCount((prev) => {
+                            if (prev <= 1) {
+                                playSound('beep');
+                                handleNextAutoPhase();
+                                return 0;
+                            }
+                            return prev - 1;
+                        });
+                    }, 1000);
+                }
+                return () => clearInterval(interval);
+            }, [autoDungeonActive, autoTimerCount, autoDungeonPhase, autoRound, autoExIndex, autoFinisherIndex]);
+
+            // --- BROWSER SYSTEM NOTIFICATIONS ---
+            useEffect(() => {
+                if (hasOnboarded && 'Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+                    Notification.requestPermission();
+                }
+            }, [hasOnboarded]);
+
+            // --- CLOCK TICKER (for deadline countdown & scheduled reminders) ---
+            useEffect(() => {
+                const clockInterval = setInterval(() => setNow(new Date()), 1000);
+                return () => clearInterval(clockInterval);
+            }, []);
+
+            // --- SCHEDULED DAILY REMINDERS (CUSTOM HOURS) ---
+            useEffect(() => {
+                if (!hasOnboarded || workoutCompletedToday) return;
+                const h = now.getHours();
+                const m = now.getMinutes();
+                if (reminderHours.includes(h) && m === 0 && !notifiedHoursRef.current[`${now.toDateString()}-${h}`]) {
+                    notifiedHoursRef.current[`${now.toDateString()}-${h}`] = true;
+                    if ('Notification' in window && Notification.permission === 'granted') {
+                        new Notification("⚠️ SYSTEM WINDOW CLOSING", {
+                            body: `Hunter, waktu tersisa sebelum hari berakhir! Selesaikan Dungeon sekarang untuk menghindari penalti -20 XP.`,
+                            icon: "https://cdn-icons-png.flaticon.com/512/8254/8254646.png"
+                        });
+                    }
+                    triggerAlert("SYSTEM WARNING", "Waktu harian menipis! Segera selesaikan Dungeon sebelum tengah malam.", true);
+                }
+            }, [now, hasOnboarded, workoutCompletedToday, reminderHours]);
+
+            // --- AUTOMATIC DAILY ROLLOVER (uses the device's own local date/time — works the same on HP or PC) ---
+            useEffect(() => {
+                if (!hasOnboarded) return;
+                const todayStr = now.toDateString(); // e.g. "Fri Jul 03 2026" based on this device's clock/timezone
+                if (lastActiveDate === null) {
+                    // First time we're able to check on this device — just record today, no reset needed.
+                    setLastActiveDate(todayStr);
+                    localStorage.setItem('sl_lastActiveDate', todayStr);
+                    return;
+                }
+                if (lastActiveDate !== todayStr) {
+                    // Device date has changed since the last time the app was open → new day, auto reset daily state.
+                    setDailyQuests({ steps: false, water: false, sleep: false });
+                    setWorkoutPenaltyClaimed(false);
+                    setWorkoutCompletedToday(false);
+                    setWorkoutChecks({});
+                    setWaterMl(0);
+                    notifiedHoursRef.current = {};
+                    setLastActiveDate(todayStr);
+                    localStorage.setItem('sl_lastActiveDate', todayStr);
+                    triggerAlert("SYSTEM: HARI BARU", "Sistem mendeteksi pergantian hari pada perangkat Anda. Misi harian & status dungeon telah di-reset otomatis.", false);
+                }
+            }, [now, hasOnboarded, lastActiveDate]);
+
+            // --- BOOT SPLASH: shows once whenever the app is (re)opened by an already-registered hunter ---
+            useEffect(() => {
+                if (hasOnboarded && !bootCheckedRef.current) {
+                    bootCheckedRef.current = true;
+                    setShowBootSplash(true);
+                    const t = setTimeout(() => setShowBootSplash(false), 2400);
+                    return () => clearTimeout(t);
+                }
+            }, [hasOnboarded]);
+
+            const triggerBrowserNotification = () => {
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification("Solo Leveling System Window", {
+                        body: "Hunter, waktu harian Anda hampir habis! Selesaikan Dungeon hari ini sebelum terkena penalti.",
+                        icon: "https://cdn-icons-png.flaticon.com/512/8254/8254646.png"
+                    });
+                } else {
+                    triggerAlert("SYSTEM WARNING", "Izin notifikasi tidak diberikan. Harap aktifkan izin di browser Anda.");
+                }
             };
 
-            // --- GENERATE DYNAMIC WORKOUT DATA ACCORDING TO DIFFICULTY (WEIGHT) ---
+            // --- GET DIFFICULTY BASED ON WEIGHT (RANK) ---
+            const getRank = () => {
+                if (currentWeight > 84) return { rank: "RANK E (Joint Safe / Low Impact)", class: "text-blue-400 border-blue-500/50 bg-blue-950/20" };
+                if (currentWeight > 80) return { rank: "RANK D (Intermediate Powering)", class: "text-purple-400 border-purple-500/50 bg-purple-950/20" };
+                return { rank: "RANK C (Shadow Monarch Recruit)", class: "text-rose-400 border-rose-500/50 bg-rose-950/20" };
+            };
+
+            // --- GENERATE DYNAMIC WORKOUTS ACCORDING TO CURRENT WEIGHT ---
             const generateWorkouts = (weight) => {
                 if (weight > 84) {
-                    // Rank E: Joint-friendly, modified reps, safe squats
                     return {
                         1: {
                             title: "DAY 1 — Strength Quest (Rank E)",
@@ -281,13 +600,14 @@
                             xp: 50,
                             rounds: 3,
                             exercises: [
-                                { name: "Air Squat (Fokus form aman, pantat sejajar lutut)", reps: "12 reps" },
-                                { name: "Knee Push up (Tumpuan lutut di matras)", reps: "5 reps" },
-                                { name: "Dumbbell Row (Beban ringan-menengah)", reps: "10 reps/sisi" },
-                                { name: "Dumbbell Shoulder Press (Duduk tegak)", reps: "8 reps" },
-                                { name: "Plank (Fokus kunci perut, punggung rata)", reps: "20 detik" }
+                                { name: "Air Squat (Form Aman)", duration: 40, reps: "12 reps" },
+                                { name: "Knee Push up (Lutut di Matras)", duration: 30, reps: "5 reps" },
+                                { name: "Dumbbell Row (Ringan)", duration: 40, reps: "10 reps/sisi" },
+                                { name: "Dumbbell Shoulder Press (Duduk)", duration: 40, reps: "8 reps" },
+                                { name: "Plank (Form Kunci Perut)", duration: 30, reps: "20 detik" }
                             ],
-                            rest: "60-90 detik tiap akhir ronde"
+                            restEx: 15,
+                            restRound: 60
                         },
                         2: {
                             title: "DAY 2 — Fat Burning Quest (Rank E)",
@@ -295,6 +615,2207 @@
                             xp: 45,
                             rounds: 3,
                             exercises: [
-                                { name: "Step Jack (Ganti jumping jack konvensional demi sendi)", reps: "30 reps" },
-                                { name: "Slow Mountain Climber", reps: "16 reps (total)" },
-                   
+                                { name: "Step Jack (Low Impact)", duration: 40, reps: "30 reps" },
+                                { name: "Slow Mountain Climber", duration: 30, reps: "16 reps" },
+                                { name: "Backward Lunges (Lutut Aman)", duration: 40, reps: "8 reps/sisi" },
+                                { name: "Easy Sit Up / Crunch", duration: 30, reps: "12 reps" },
+                                { name: "Jalan Cepat", duration: 900, once: true, reps: "15 menit (sekali jalan, bukan per ronde)" }
+                            ],
+                            restEx: 15,
+                            restRound: 60
+                        },
+                        3: {
+                            title: "DAY 3 — Recovery + Mobility (Rank E)",
+                            subtitle: "🌀 Basic Elixir Regeneration",
+                            xp: 20,
+                            rounds: 1,
+                            exercises: [
+                                { name: "Full Body Static Stretching", duration: 60, reps: "15 menit" },
+                                { name: "Hamstring Stretch Pasif", duration: 45, reps: "1 menit/kaki" },
+                                { name: "Shoulder Rotation", duration: 30, reps: "20 putaran" },
+                                { name: "Jalan Santai Rileks", duration: 900, reps: "15 menit" }
+                            ],
+                            restEx: 10,
+                            restRound: 30
+                        },
+                        4: {
+                            title: "DAY 4 — Strength Boss Fight (Rank E)",
+                            subtitle: "👹 Golem Scout Skirmish",
+                            xp: 70,
+                            rounds: 4,
+                            exercises: [
+                                { name: "Goblet Squat (Beban Ringan)", duration: 45, reps: "10 reps" },
+                                { name: "Knee Push up (Fokus Kontrol)", duration: 35, reps: "Maksimal (Kejar 6-8 reps)" },
+                                { name: "Dumbbell Deadlift (Form Tegak)", duration: 45, reps: "12 reps" },
+                                { name: "Dumbbell Bicep Curl", duration: 35, reps: "10 reps" },
+                                { name: "Plank Klasik", duration: 30, reps: "30 detik" }
+                            ],
+                            restEx: 20,
+                            restRound: 90
+                        },
+                        5: {
+                            title: "DAY 5 — Cardio Dungeon (Rank E)",
+                            subtitle: "⚡ Escape from the Swamp (EMOM)",
+                            xp: 60,
+                            rounds: 4,
+                            exercises: [
+                                { name: "Menit 1: Air Squat", duration: 40, reps: "8 reps" },
+                                { name: "Menit 2: Knee Push up", duration: 40, reps: "6 reps" },
+                                { name: "Menit 3: Slow Mountain Climber", duration: 40, reps: "10 reps" },
+                                { name: "Menit 4: Istirahat Total", duration: 60, reps: "60 detik" }
+                            ],
+                            restEx: 10,
+                            restRound: 40
+                        }
+                    };
+                } else if (weight > 80) {
+                    return {
+                        1: {
+                            title: "DAY 1 — Strength Quest (Rank D)",
+                            subtitle: "⚔️ Goblin Guard Confrontation",
+                            xp: 50,
+                            rounds: 3,
+                            exercises: [
+                                { name: "Squat", duration: 45, reps: "15 reps" },
+                                { name: "Push up (Ganti lutut jika lelah)", duration: 40, reps: "5 reps" },
+                                { name: "Dumbbell Row", duration: 45, reps: "12 reps/sisi" },
+                                { name: "Dumbbell Shoulder Press", duration: 45, reps: "10 reps" },
+                                { name: "Plank", duration: 35, reps: "30 detik" }
+                            ],
+                            restEx: 15,
+                            restRound: 60
+                        },
+                        2: {
+                            title: "DAY 2 — Fat Burning Quest (Rank D)",
+                            subtitle: "🔥 Wild Beast Hunting",
+                            xp: 45,
+                            rounds: 4,
+                            exercises: [
+                                { name: "Jumping Jack", duration: 45, reps: "30 reps" },
+                                { name: "Mountain Climber", duration: 35, reps: "20 reps" },
+                                { name: "Alternating Lunges", duration: 45, reps: "12 reps/sisi" },
+                                { name: "Sit Up", duration: 35, reps: "15 reps" },
+                                { name: "Jalan Cepat / Jogging Ringan", duration: 900, once: true, reps: "15 menit (sekali jalan, bukan per ronde)" }
+                            ],
+                            restEx: 15,
+                            restRound: 60
+                        },
+                        3: {
+                            title: "DAY 3 — Recovery + Mobility (Rank D)",
+                            subtitle: "🌀 Intermediate Elixir",
+                            xp: 20,
+                            rounds: 1,
+                            exercises: [
+                                { name: "Active Mobility Stretches", duration: 60, reps: "15 menit" },
+                                { name: "Light Air Squats", duration: 45, reps: "10 reps" },
+                                { name: "Scapular Retraction", duration: 30, reps: "15 reps" },
+                                { name: "Jalan Santai", duration: 1200, reps: "20 menit" }
+                            ],
+                            restEx: 10,
+                            restRound: 30
+                        },
+                        4: {
+                            title: "DAY 4 — Strength Boss Fight (Rank D)",
+                            subtitle: "👹 Golem Captain Battle",
+                            xp: 70,
+                            rounds: 5,
+                            exercises: [
+                                { name: "Goblet Squat (Beban Sedang)", duration: 50, reps: "12 reps" },
+                                { name: "Regular Push up", duration: 45, reps: "Maksimal reps" },
+                                { name: "Dumbbell Deadlift", duration: 50, reps: "15 reps" },
+                                { name: "Dumbbell Curl", duration: 40, reps: "12 reps" },
+                                { name: "Plank", duration: 45, reps: "45 detik" }
+                            ],
+                            restEx: 15,
+                            restRound: 75
+                        },
+                        5: {
+                            title: "DAY 5 — Cardio Dungeon (Rank D)",
+                            subtitle: "⚡ Snake Pit Escape (EMOM)",
+                            xp: 60,
+                            rounds: 5,
+                            exercises: [
+                                { name: "Menit 1: Squat", duration: 45, reps: "10 reps" },
+                                { name: "Menit 2: Push up (Biasa/Knee)", duration: 45, reps: "8 reps" },
+                                { name: "Menit 3: Mountain Climber", duration: 45, reps: "16 reps" },
+                                { name: "Menit 4: Istirahat EMOM", duration: 60, reps: "60 detik" }
+                            ],
+                            restEx: 10,
+                            restRound: 40
+                        }
+                    };
+                } else {
+                    return {
+                        1: {
+                            title: "DAY 1 — Strength Quest (Rank C)",
+                            subtitle: "⚔️ Orc Squad Annihilation",
+                            xp: 60,
+                            rounds: 4,
+                            exercises: [
+                                { name: "Dumbbell Goblet Squat (Beban Maksimal)", duration: 50, reps: "15 reps" },
+                                { name: "Full Military Push up", duration: 45, reps: "10 reps" },
+                                { name: "Dumbbell Row Berat", duration: 50, reps: "15 reps/sisi" },
+                                { name: "Dumbbell Shoulder Press", duration: 45, reps: "12 reps" },
+                                { name: "Plank", duration: 45, reps: "45 detik" }
+                            ],
+                            restEx: 10,
+                            restRound: 45
+                        },
+                        2: {
+                            title: "DAY 2 — Fat Burning Quest (Rank C)",
+                            subtitle: "🔥 High Intensity Monster Raid",
+                            xp: 55,
+                            rounds: 4,
+                            exercises: [
+                                { name: "Explosive Jumping Jack", duration: 50, reps: "45 reps" },
+                                { name: "Fast Mountain Climber", duration: 45, reps: "30 reps" },
+                                { name: "Jump Lunges Bergantian", duration: 50, reps: "10 reps/sisi" },
+                                { name: "V-Up / Sit Up Maksimal", duration: 40, reps: "20 reps" },
+                                { name: "Sprint Interval / Jogging Cepat", duration: 1200, once: true, reps: "20 menit (sekali jalan, bukan per ronde)" }
+                            ],
+                            restEx: 10,
+                            restRound: 45
+                        },
+                        3: {
+                            title: "DAY 3 — Recovery + Mobility (Rank C)",
+                            subtitle: "🌀 High-Grade Elixir Healing",
+                            xp: 25,
+                            rounds: 1,
+                            exercises: [
+                                { name: "Deep Yoga Stretch", duration: 60, reps: "20 menit" },
+                                { name: "Cossack Squat Ringan", duration: 45, reps: "12 reps" },
+                                { name: "T-Spine Mobilization", duration: 45, reps: "10 reps/sisi" },
+                                { name: "Jalan Santai / Bersepeda", duration: 1200, reps: "20 menit" }
+                            ],
+                            restEx: 10,
+                            restRound: 30
+                        },
+                        4: {
+                            title: "DAY 4 — Strength Boss Fight (Rank C)",
+                            subtitle: "👹 Demon Castle Vanguard Raid",
+                            xp: 80,
+                            rounds: 5,
+                            exercises: [
+                                { name: "Double Dumbbell Squat", duration: 50, reps: "12 reps" },
+                                { name: "Full Push up (Slow Tempo)", duration: 45, reps: "Maksimal" },
+                                { name: "Dumbbell Romanian Deadlift", duration: 50, reps: "15 reps" },
+                                { name: "Hammer Curl to Press", duration: 45, reps: "10 reps" },
+                                { name: "Plank Shoulder Tap", duration: 45, reps: "45 detik" }
+                            ],
+                            restEx: 15,
+                            restRound: 60
+                        },
+                        5: {
+                            title: "DAY 5 — Cardio Dungeon (Rank C)",
+                            subtitle: "⚡ Hell Gate Lockdown (Heavy EMOM)",
+                            xp: 75,
+                            rounds: 5,
+                            exercises: [
+                                { name: "Menit 1: Squat Jumps", duration: 45, reps: "12 reps" },
+                                { name: "Menit 2: Military Push up", duration: 45, reps: "12 reps" },
+                                { name: "Menit 3: Mountain Climber", duration: 45, reps: "24 reps" },
+                                { name: "Menit 4: Burpees / Istirahat Aktif", duration: 60, reps: "5 reps" }
+                            ],
+                            restEx: 10,
+                            restRound: 30
+                        }
+                    };
+                }
+            };
+
+            const workouts = generateWorkouts(currentWeight);
+            const currentHunterLevel = Math.max(1, Math.floor((86 - currentWeight) / 2) + 1);
+            const isShadowHunter = currentWeight <= targetWeight;
+
+            // --- DAILY QUEST CONFIG: SCALES WITH HUNTER RANK ---
+            const DAILY_QUEST_BY_RANK = {
+                E: {
+                    label: 'RANK E',
+                    steps: { title: 'Misi 1: Jalan Kaki 5.000–7.000 Langkah', desc: 'Membangun kebiasaan bergerak aktif, aman untuk sendi.', xp: 8 },
+                    water: { title: 'Misi 2: Minum Air Putih 1.5 Liter', desc: 'Mulai membiasakan tubuh terhidrasi dengan baik.', xp: 5, targetMl: 1500 },
+                    sleep: { title: 'Misi 3: Tidur Minimal 6.5 Jam', desc: 'Waktu dasar regenerasi tubuh bagi pemula.', xp: 8 },
+                },
+                D: {
+                    label: 'RANK D',
+                    steps: { title: 'Misi 1: Jalan Kaki 7.000–9.000 Langkah', desc: 'Meningkatkan pembakaran kalori pasif (NEAT) secara bertahap.', xp: 10 },
+                    water: { title: 'Misi 2: Minum Air Putih 2 Liter', desc: 'Mencegah dehidrasi otot & melancarkan metabolisme.', xp: 6, targetMl: 2000 },
+                    sleep: { title: 'Misi 3: Tidur Minimal 7 Jam', desc: 'Regenerasi otot optimal pasca latihan intermediate.', xp: 10 },
+                },
+                C: {
+                    label: 'RANK C',
+                    steps: { title: 'Misi 1: Jalan Kaki 10.000+ Langkah', desc: 'Level Shadow Monarch — pembakaran kalori pasif maksimal.', xp: 15 },
+                    water: { title: 'Misi 2: Minum Air Putih 2.5 Liter', desc: 'Hidrasi tinggi untuk mendukung intensitas latihan berat.', xp: 8, targetMl: 2500 },
+                    sleep: { title: 'Misi 3: Tidur Konsisten 7–8 Jam', desc: 'Disiplin tidur ketat wajib bagi Hunter kelas atas.', xp: 12 },
+                },
+            };
+            const currentRankKey = getRankKey();
+            const dailyQuestConfig = DAILY_QUEST_BY_RANK[currentRankKey];
+
+            // --- ACHIEVEMENT DEFINITIONS ---
+            const ACHIEVEMENTS = [
+                { id: 'first_dungeon', icon: '⚔️', title: 'Langkah Pertama', desc: 'Selesaikan 1 dungeon latihan.', check: () => dungeonsCompletedTotal >= 1 },
+                { id: 'streak7', icon: '🔥', title: '7 Hari Beruntun', desc: 'Latihan konsisten 7 hari berturut-turut.', check: () => streak >= 7 },
+                { id: 'streak30', icon: '🌌', title: 'Discipline Gate', desc: 'Konsisten 30 hari — gerbang khusus terbuka.', check: () => streak >= 30 },
+                { id: 'weight3', icon: '⚖️', title: 'Turun 3 KG', desc: 'Berhasil menurunkan 3 kg dari berat awal.', check: () => (startWeight - currentWeight) >= 3 },
+                { id: 'weight5', icon: '📉', title: 'Turun 5 KG', desc: 'Berhasil menurunkan 5 kg dari berat awal.', check: () => (startWeight - currentWeight) >= 5 },
+                { id: 'target', icon: '🏆', title: 'Target Tercapai', desc: 'Mencapai target berat badan.', check: () => startWeight > targetWeight && currentWeight <= targetWeight },
+                { id: 'pushup20', icon: '💪', title: '20 Push Up', desc: 'Maksimum push up mencapai 20 reps.', check: () => startPushups < 20 && maxPushups >= 20 },
+                { id: 'pushup50', icon: '🦾', title: '50 Push Up', desc: 'Maksimum push up mencapai 50 reps.', check: () => startPushups < 50 && maxPushups >= 50 },
+                { id: 'rankD', icon: '🔷', title: 'Naik ke Rank D', desc: 'Berhasil naik peringkat menjadi Rank D.', check: () => startWeight > 84 && currentWeight <= 84 },
+                { id: 'rankC', icon: '🟣', title: 'Naik ke Rank C', desc: 'Berhasil naik peringkat menjadi Rank C.', check: () => startWeight > 80 && currentWeight <= 80 },
+                { id: 'shadowHunter', icon: '👤', title: 'Shadow Hunter', desc: 'Mencapai status Shadow Hunter.', check: () => startWeight > 75 && isShadowHunter },
+                { id: 'level10', icon: '⭐', title: 'Skill Level 10', desc: 'Mencapai Skill Level 10.', check: () => skillLevel >= 10 },
+                { id: 'plank60', icon: '🧘', title: 'Plank 60 Detik', desc: 'Menahan plank selama 60 detik.', check: () => logs.some(l => l.plank != null && l.plank >= 60) },
+            ];
+
+            // --- BOSS BATTLE: WEEKLY EVALUATION FRAMED AS BOSS FIGHT ---
+            const bossTotalHp = Math.max(1, startWeight - targetWeight);
+            const bossDamageDealt = Math.max(0, Math.min(bossTotalHp, startWeight - currentWeight));
+            const bossHpRemainingPct = Math.max(0, Math.min(100, ((bossTotalHp - bossDamageDealt) / bossTotalHp) * 100));
+            const bossDefeated = bossHpRemainingPct <= 0;
+
+            // --- SKILL TREE: UNLOCKS BASED ON SKILL LEVEL ---
+            const SKILL_TREE = [
+                { level: 1, name: 'Basic Push Up', icon: '🥊', unlocked: true },
+                { level: 3, name: 'Diamond Push Up', icon: '💎' },
+                { level: 5, name: 'Plank Variation', icon: '🧘' },
+                { level: 7, name: 'Explosive Burpee', icon: '💥' },
+                { level: 10, name: 'Shadow Sprint (HIIT)', icon: '⚡' },
+                { level: 13, name: 'Monarch Core Circuit', icon: '👑' },
+            ].map(s => ({ ...s, unlocked: s.unlocked || skillLevel >= s.level }));
+
+            // --- REWARD XP FUNCTION ---
+            const gainXp = (amount) => {
+                setXp((prevXp) => {
+                    const newXp = prevXp + amount;
+                    if (newXp >= xpToNextLevel) {
+                        setSkillLevel((prevLvl) => prevLvl + 1);
+                        setStats((prevStats) => ({
+                            STR: prevStats.STR + 3,
+                            AGI: prevStats.AGI + 2,
+                            END: prevStats.END + 3,
+                            VIT: prevStats.VIT + 2,
+                            DISC: prevStats.DISC + 4,
+                        }));
+                        setTimeout(() => {
+                            playSound('levelUp');
+                            setCinematicEvent({ type: 'levelup', level: skillLevel + 1 });
+                            triggerAlert("SKILL LEVEL UP!", `Selamat! Anda berhasil meningkatkan Skill Level Anda ke Level ${skillLevel + 1}.`, false);
+                        }, 100);
+                        return newXp - xpToNextLevel;
+                    }
+                    return newXp;
+                });
+            };
+
+            // --- NUTRITION CALCULATOR (INDONESIAN LOW BUDGET) ---
+            const generateNutrition = () => {
+                // Kalkulasi BMR (Mifflin-St Jeor)
+                const bmr = 10 * currentWeight + 6.25 * height - 5 * age + 5; 
+                const tdee = bmr * (workoutCompletedToday ? 1.375 : 1.2);
+                const targetCal = Math.round(tdee - 500); // Kalori defisit untuk turun berat badan
+
+                // Low budget protein, carbs, veggies Indonesia
+                const listProtein = [
+                    "2 Butir Telur Rebus (Bumbu minimalis / kecap)",
+                    "1 Porsi Tempe & Tahu Goreng (Sedikit Minyak)",
+                    "1 Ekor Lele Bakar Tanpa Santan",
+                    "100g Dada Ayam Fillet Rebus / Suwir",
+                    "1 Piring Kecil Tumis Tahu Jamur Tiram"
+                ];
+                const listKarbo = [
+                    "1 Centong Nasi Putih / Merah Hangat",
+                    "1 Buah Ubi Jalar Kukus Ukuran Sedang",
+                    "1 Buah Kentang Rebus Kulit",
+                    "4 Sendok Makan Oatmeal Instan"
+                ];
+                const listSayur = [
+                    "Sayur Sop Wortel Kol (Tanpa Minyak)",
+                    "Sayur Bayam Bening Segar",
+                    "Tumis Kangkung Pedas (Sedikit Minyak)",
+                    "Lalapan Timun, Kemangi, dan Kol"
+                ];
+
+                const hash = (str) => {
+                    let h = 0;
+                    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+                    return Math.abs(h);
+                };
+
+                const getMeal = (arr, seedValue) => {
+                    const seed = hash(playerName + selectedDay + seedValue);
+                    return arr[seed % arr.length];
+                };
+
+                return {
+                    cal: targetCal,
+                    meals: [
+                        { time: "Pagi", menu: `${getMeal(listProtein, 1)} + ${getMeal(listKarbo, 2)}` },
+                        { time: "Siang", menu: `${getMeal(listProtein, 3)} + ${getMeal(listKarbo, 4)} + ${getMeal(listSayur, 5)}` },
+                        { time: "Malam", menu: `${getMeal(listProtein, 6)} + ${getMeal(listSayur, 7)} (Sangat batasi Karbohidrat)` },
+                        { time: "Snack Sehat", menu: "1 Buah Pisang Ambon / Pepaya Potong Dingin" }
+                    ]
+                };
+            };
+            const nutrition = generateNutrition();
+
+            // --- USER ACTION HANDLERS ---
+            const handleDailyCheck = (key) => {
+                playSound('click');
+                setDailyQuests(prev => {
+                    const updated = !prev[key];
+                    if (updated) {
+                        const xpReward = dailyQuestConfig[key].xp;
+                        gainXp(xpReward);
+                        triggerAlert("QUEST SELESAI!", `Misi harian selesai! +${xpReward} XP diperoleh.`, false);
+                    }
+                    return { ...prev, [key]: updated };
+                });
+            };
+
+            const handleAddWater = (amountMl) => {
+                playSound('click');
+                setWaterMl(prev => {
+                    const updated = Math.max(0, prev + amountMl);
+                    const target = dailyQuestConfig.water.targetMl;
+                    if (updated >= target && !dailyQuests.water) {
+                        const xpReward = dailyQuestConfig.water.xp;
+                        gainXp(xpReward);
+                        setDailyQuests(dq => ({ ...dq, water: true }));
+                        setTimeout(() => triggerAlert("QUEST SELESAI!", `Target hidrasi tercapai! +${xpReward} XP diperoleh.`, false), 50);
+                    }
+                    return updated;
+                });
+            };
+
+            const handlePenalty = () => {
+                if (workoutPenaltyClaimed) return;
+                playSound('penalty');
+                setWorkoutPenaltyClaimed(true);
+                setXp(prev => Math.max(0, prev - 20));
+                triggerAlert("PENALTY APPLIED", "Melewatkan latihan harian tanpa alasan medis. -20 XP dikurangi dari sistem!", true);
+            };
+
+            const handleExerciseCheck = (exIndex) => {
+                playSound('click');
+                const key = `day-${selectedDay}-ex-${exIndex}`;
+                setWorkoutChecks(prev => ({
+                    ...prev,
+                    [key]: !prev[key]
+                }));
+            };
+
+            const completeActiveWorkout = () => {
+                playSound('questComplete');
+                setCinematicEvent({ type: 'dungeonclear', day: selectedDay });
+                gainXp(workouts[selectedDay].xp);
+                setWorkoutCompletedToday(true);
+                setDungeonsCompletedTotal(prev => prev + 1);
+                
+                // Progress streak
+                setStreak(prev => {
+                    const nextStreak = prev + 1;
+                    if (nextStreak >= 30 && !isDisciplineGateUnlocked) {
+                        setIsDisciplineGateUnlocked(true);
+                        gainXp(1000);
+                        triggerAlert("HIDDEN QUEST SELESAI!", "Gerbang Disiplin Terbuka! +1000 XP & Fitur Hunter Mode Aktif!", false);
+                    }
+                    return nextStreak;
+                });
+
+                // Upgrade stats
+                setStats(prev => ({
+                    ...prev,
+                    DISC: prev.DISC + 3,
+                    STR: prev.STR + (selectedDay === 1 || selectedDay === 4 ? 2 : 0),
+                    VIT: prev.VIT + (selectedDay === 3 ? 1 : 0),
+                    AGI: prev.AGI + (selectedDay === 2 || selectedDay === 5 ? 2 : 0)
+                }));
+
+                triggerAlert("DUNGEON CLEARED!", `Anda menyelesaikan latihan Day ${selectedDay}! +${workouts[selectedDay].xp} XP & status Anda ditingkatkan.`, false);
+            };
+
+            // --- AUTOMATED WORKOUT ENGINE CONTROLLER ---
+            const startAutoDungeon = () => {
+                playSound('arise');
+                const mainExercises = workouts[selectedDay].exercises.filter(ex => !ex.once);
+                setAutoDungeonActive(true);
+                setAutoRound(1);
+                setAutoExIndex(0);
+                setAutoFinisherIndex(0);
+                setAutoDungeonPhase('exercise');
+                setAutoTimerCount(mainExercises[0].duration);
+                // Reset manual workout checks
+                setWorkoutChecks({});
+            };
+
+            const stopAutoDungeon = () => {
+                playSound('click');
+                setAutoDungeonActive(false);
+                setAutoDungeonPhase('idle');
+            };
+
+            // --- SCREEN WAKE LOCK: KEEP SCREEN ON DURING AUTO BATTLE ---
+            const requestWakeLock = async () => {
+                try {
+                    if ('wakeLock' in navigator) {
+                        wakeLockRef.current = await navigator.wakeLock.request('screen');
+                    }
+                } catch (e) {
+                    console.warn('Wake Lock tidak tersedia:', e);
+                }
+            };
+            const releaseWakeLock = () => {
+                if (wakeLockRef.current) {
+                    wakeLockRef.current.release().catch(() => {});
+                    wakeLockRef.current = null;
+                }
+            };
+            useEffect(() => {
+                if (autoDungeonActive) {
+                    requestWakeLock();
+                } else {
+                    releaseWakeLock();
+                }
+                return () => releaseWakeLock();
+            }, [autoDungeonActive]);
+            // Re-acquire wake lock when tab becomes visible again mid-battle (browsers release it automatically on tab switch)
+            useEffect(() => {
+                const handleVisibility = () => {
+                    if (autoDungeonActive && document.visibilityState === 'visible') {
+                        requestWakeLock();
+                    }
+                };
+                document.addEventListener('visibilitychange', handleVisibility);
+                return () => document.removeEventListener('visibilitychange', handleVisibility);
+            }, [autoDungeonActive]);
+
+            const handleNextAutoPhase = () => {
+                const dayData = workouts[selectedDay];
+                const mainExercises = dayData.exercises.filter(ex => !ex.once);
+                const finisherExercises = dayData.exercises.filter(ex => ex.once);
+                const totalExercises = mainExercises.length;
+
+                if (autoDungeonPhase === 'exercise') {
+                    // Mark current as done (index refers to position within the full exercises array for checklist consistency)
+                    const globalIdx = dayData.exercises.indexOf(mainExercises[autoExIndex]);
+                    setWorkoutChecks(prev => ({
+                        ...prev,
+                        [`day-${selectedDay}-ex-${globalIdx}`]: true
+                    }));
+
+                    if (autoExIndex === totalExercises - 1) {
+                        // Selesai satu ronde dari gerakan utama
+                        if (autoRound === dayData.rounds) {
+                            // Semua ronde utama selesai — lanjut ke gerakan "sekali jalan" (cardio panjang) jika ada
+                            if (finisherExercises.length > 0) {
+                                setAutoDungeonPhase('restRound');
+                                setAutoTimerCount(dayData.restRound);
+                            } else {
+                                setAutoDungeonPhase('completed');
+                                completeActiveWorkout();
+                            }
+                        } else {
+                            setAutoDungeonPhase('restRound');
+                            setAutoTimerCount(dayData.restRound);
+                        }
+                    } else {
+                        setAutoDungeonPhase('restEx');
+                        setAutoTimerCount(dayData.restEx);
+                    }
+                } else if (autoDungeonPhase === 'finisher') {
+                    const globalIdx = dayData.exercises.indexOf(finisherExercises[autoFinisherIndex]);
+                    setWorkoutChecks(prev => ({
+                        ...prev,
+                        [`day-${selectedDay}-ex-${globalIdx}`]: true
+                    }));
+                    const nextFinisherIdx = autoFinisherIndex + 1;
+                    if (nextFinisherIdx >= finisherExercises.length) {
+                        setAutoDungeonPhase('completed');
+                        completeActiveWorkout();
+                    } else {
+                        setAutoFinisherIndex(nextFinisherIdx);
+                        setAutoDungeonPhase('restEx');
+                        setAutoTimerCount(dayData.restEx);
+                    }
+                } else if (autoDungeonPhase === 'restEx') {
+                    const nextIdx = autoExIndex + 1;
+                    setAutoExIndex(nextIdx);
+                    setAutoDungeonPhase('exercise');
+                    setAutoTimerCount(mainExercises[nextIdx].duration);
+                } else if (autoDungeonPhase === 'restRound') {
+                    if (autoRound === dayData.rounds && finisherExercises.length > 0 && autoExIndex === totalExercises - 1) {
+                        // Transisi khusus: semua ronde utama sudah selesai, mulai gerakan cardio "sekali jalan"
+                        setAutoFinisherIndex(0);
+                        setAutoDungeonPhase('finisher');
+                        setAutoTimerCount(finisherExercises[0].duration);
+                    } else {
+                        setAutoRound(prev => prev + 1);
+                        setAutoExIndex(0);
+                        setAutoDungeonPhase('exercise');
+                        setAutoTimerCount(mainExercises[0].duration);
+                    }
+                }
+            };
+
+            const handleWeeklyLogSubmit = (e) => {
+                e.preventDefault();
+                const w = parseFloat(inputWeight);
+                const p = parseInt(inputPushups);
+                const wa = parseFloat(inputWaist);
+                const arm = inputArm === '' ? null : parseFloat(inputArm);
+                const plank = inputPlank === '' ? null : parseInt(inputPlank);
+                const squat = inputSquat === '' ? null : parseInt(inputSquat);
+
+                if (isNaN(w) || isNaN(p) || isNaN(wa)) {
+                    triggerAlert("INPUT ERROR", "Mohon isi minimal Berat Badan, Push Up, dan Lingkar Perut dengan angka.", true);
+                    return;
+                }
+
+                playSound('questComplete');
+                
+                const newLog = {
+                    date: `Minggu ${logs.length} (Hari ${streak})`,
+                    weight: w,
+                    pushups: p,
+                    waist: wa,
+                    arm: (arm !== null && !isNaN(arm)) ? arm : null,
+                    plank: (plank !== null && !isNaN(plank)) ? plank : null,
+                    squat: (squat !== null && !isNaN(squat)) ? squat : null,
+                };
+
+                const updatedLogs = [newLog, ...logs];
+                setLogs(updatedLogs);
+                
+                const previousLog = logs[0] || { weight: 86, pushups: 5 };
+                const weightLoss = previousLog.weight - w;
+                const pushupIncrease = p - previousLog.pushups;
+                const plankIncrease = (newLog.plank !== null && previousLog.plank != null) ? newLog.plank - previousLog.plank : 0;
+                const squatIncrease = (newLog.squat !== null && previousLog.squat != null) ? newLog.squat - previousLog.squat : 0;
+
+                let textMessage = "";
+                if (weightLoss > 0) {
+                    gainXp(Math.round(weightLoss * 100));
+                    textMessage += `Turun ${weightLoss.toFixed(1)} kg (+${Math.round(weightLoss * 100)} XP)! `;
+                }
+                if (pushupIncrease > 0) {
+                    gainXp(pushupIncrease * 15);
+                    textMessage += `Max Push up bertambah +${pushupIncrease} (+${pushupIncrease * 15} XP)! `;
+                }
+                if (plankIncrease > 0) {
+                    gainXp(plankIncrease * 2);
+                    textMessage += `Plank bertambah +${plankIncrease}s (+${plankIncrease * 2} XP)! `;
+                }
+                if (squatIncrease > 0) {
+                    gainXp(squatIncrease * 5);
+                    textMessage += `Max Squat bertambah +${squatIncrease} (+${squatIncrease * 5} XP)!`;
+                }
+
+                setCurrentWeight(w);
+                setMaxPushups(p);
+                setWaistCircumference(wa);
+
+                setStats(prev => ({
+                    ...prev,
+                    STR: prev.STR + (pushupIncrease > 0 ? pushupIncrease : 1) + (squatIncrease > 0 ? Math.ceil(squatIncrease / 2) : 0),
+                    VIT: prev.VIT + (weightLoss > 0 ? Math.ceil(weightLoss * 2) : 1),
+                    END: prev.END + (plankIncrease > 0 ? Math.ceil(plankIncrease / 5) : 0)
+                }));
+
+                if (isShadowHunter || w <= targetWeight) {
+                    triggerAlert("TARGET TERCAPAI!", `Selamat Hunter! Berat badan target ${targetWeight} kg telah tercapai! ${textMessage}`, false);
+                } else {
+                    triggerAlert("EVALUASI SELESAI", `Data berhasil disinkronisasi ke sistem! ${textMessage}`, false);
+                }
+
+                setInputWeight('');
+                setInputPushups('');
+                setInputWaist('');
+                setInputArm('');
+                setInputPlank('');
+                setInputSquat('');
+            };
+
+            const startNewDay = () => {
+                playSound('click');
+                setDailyQuests({ steps: false, water: false, sleep: false });
+                setWaterMl(0);
+                setWorkoutPenaltyClaimed(false);
+                setWorkoutCompletedToday(false);
+                setWorkoutChecks({});
+                triggerAlert("SISTEM DI-RESET", "Misi harian di-reset. Selamat bertarung kembali, Hunter!", false);
+            };
+
+            // --- EXPORT / IMPORT DATA (JSON BACKUP) ---
+            const handleExportData = () => {
+                playSound('click');
+                const exportKeys = ['sl_hasOnboarded','sl_playerName','sl_age','sl_height','sl_currentWeight','sl_targetWeight','sl_maxPushups','sl_waistCircumference','sl_xp','sl_skillLevel','sl_stats','sl_streak','sl_disciplineGate','sl_dailyQuests','sl_penaltyClaimed','sl_workoutCompletedToday','sl_logs','sl_achievements','sl_waterMl','sl_dungeonsCompletedTotal','sl_reminderHours','sl_startWeight','sl_startPushups'];
+                const data = {};
+                exportKeys.forEach(k => { const v = localStorage.getItem(k); if (v !== null) data[k] = v; });
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `solo-leveling-backup-${new Date().toISOString().slice(0,10)}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                triggerAlert("DATA DIEKSPOR", "Backup data berhasil diunduh sebagai file JSON.", false);
+            };
+
+            const handleImportData = (file) => {
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    try {
+                        const data = JSON.parse(ev.target.result);
+                        Object.entries(data).forEach(([k, v]) => localStorage.setItem(k, v));
+                        triggerAlert("DATA DIIMPOR", "Backup berhasil dipulihkan. Memuat ulang sistem...", false);
+                        setTimeout(() => window.location.reload(), 1200);
+                    } catch (err) {
+                        triggerAlert("IMPORT GAGAL", "File backup tidak valid atau rusak.", true);
+                    }
+                };
+                reader.readAsText(file);
+            };
+
+            // --- FULL DATA WIPE: hapus seluruh progres Hunter dan mulai dari nol ---
+            const handleFullResetData = () => {
+                const sure = window.confirm("Yakin ingin menghapus SEMUA data Hunter (level, XP, stats, riwayat, trophy) dan mulai dari NOL? Tindakan ini tidak bisa dibatalkan.");
+                if (!sure) return;
+                const sureAgain = window.confirm("Konfirmasi sekali lagi: SEMUA progres akan hilang permanen. Lanjutkan?");
+                if (!sureAgain) return;
+                Object.keys(localStorage).forEach(k => {
+                    if (k.startsWith('sl_')) localStorage.removeItem(k);
+                });
+                window.location.reload();
+            };
+
+            const handleOnboardSubmit = (e) => {
+                e.preventDefault();
+                playSound('arise');
+                
+                let str = 10 + Math.floor(maxPushups);
+                let agi = 20 - Math.floor(currentWeight / 10);
+                
+                setStats({ STR: str, AGI: Math.max(5, agi), END: 15, VIT: 20, DISC: 10 });
+                setLogs([{ date: 'Awal', weight: currentWeight, pushups: maxPushups, waist: waistCircumference }]);
+                setStartWeight(currentWeight);
+                localStorage.setItem('sl_startWeight', currentWeight);
+                setStartPushups(maxPushups);
+                localStorage.setItem('sl_startPushups', maxPushups);
+                setHasOnboarded(true);
+            };
+
+            // --- AUTO DISMISS CINEMATIC OVERLAY ---
+            useEffect(() => {
+                if (cinematicEvent) {
+                    const t = setTimeout(() => setCinematicEvent(null), 2600);
+                    return () => clearTimeout(t);
+                }
+            }, [cinematicEvent]);
+
+            // --- ACHIEVEMENT DETECTION ---
+            useEffect(() => {
+                if (!hasOnboarded) return;
+                const newlyUnlocked = ACHIEVEMENTS.filter(a => a.check() && !unlockedAchievements.includes(a.id));
+                if (newlyUnlocked.length > 0) {
+                    setUnlockedAchievements(prev => [...prev, ...newlyUnlocked.map(a => a.id)]);
+                    const first = newlyUnlocked[0];
+                    setTimeout(() => {
+                        playSound('levelUp');
+                        triggerAlert("🏆 ACHIEVEMENT UNLOCKED!", `${first.icon} ${first.title} — ${first.desc}`, false);
+                    }, 300);
+                }
+            }, [hasOnboarded, streak, currentWeight, maxPushups, skillLevel, logs, isShadowHunter, dungeonsCompletedTotal, startWeight, startPushups, targetWeight]);
+
+            // --- PWA INSTALL PROMPT LISTENER ---
+            useEffect(() => {
+                if (window.__slDeferredInstallPrompt) setIsInstallable(true);
+                const handler = () => setIsInstallable(true);
+                window.addEventListener('sl-installable', handler);
+                return () => window.removeEventListener('sl-installable', handler);
+            }, []);
+
+            const handleInstallApp = async () => {
+                const promptEvent = window.__slDeferredInstallPrompt;
+                if (!promptEvent) {
+                    triggerAlert("INSTALL TIDAK TERSEDIA", "Browser Anda belum menawarkan instalasi, atau app sudah terpasang.", true);
+                    return;
+                }
+                promptEvent.prompt();
+                await promptEvent.userChoice;
+                window.__slDeferredInstallPrompt = null;
+                setIsInstallable(false);
+            };
+
+            // --- RADAR CHART RENDERER (5-AXIS STAT WEB) ---
+            const renderRadarChart = () => {
+                const axes = [
+                    { key: 'STR', label: 'STR', color: '#f87171' },
+                    { key: 'AGI', label: 'AGI', color: '#fbbf24' },
+                    { key: 'END', label: 'END', color: '#34d399' },
+                    { key: 'VIT', label: 'VIT', color: '#60a5fa' },
+                    { key: 'DISC', label: 'DISC', color: '#c084fc' },
+                ];
+                const size = 220;
+                const center = size / 2;
+                const radius = 85;
+                const maxVal = 100;
+                const angleStep = (Math.PI * 2) / axes.length;
+
+                const getPoint = (i, value) => {
+                    const angle = angleStep * i - Math.PI / 2;
+                    const r = (Math.min(value, maxVal) / maxVal) * radius;
+                    return {
+                        x: center + r * Math.cos(angle),
+                        y: center + r * Math.sin(angle)
+                    };
+                };
+                const getLabelPoint = (i) => {
+                    const angle = angleStep * i - Math.PI / 2;
+                    return {
+                        x: center + (radius + 22) * Math.cos(angle),
+                        y: center + (radius + 22) * Math.sin(angle)
+                    };
+                };
+
+                const dataPoints = axes.map((ax, i) => getPoint(i, stats[ax.key]));
+                const polygonPoints = dataPoints.map(p => `${p.x},${p.y}`).join(' ');
+                const gridLevels = [0.25, 0.5, 0.75, 1];
+
+                return (
+                    <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-[260px] mx-auto overflow-visible">
+                        {gridLevels.map((lvl, li) => {
+                            const pts = axes.map((ax, i) => {
+                                const angle = angleStep * i - Math.PI / 2;
+                                const r = radius * lvl;
+                                return `${center + r * Math.cos(angle)},${center + r * Math.sin(angle)}`;
+                            }).join(' ');
+                            return <polygon key={li} points={pts} fill="none" stroke="#1e293b" strokeWidth="1" />;
+                        })}
+                        {axes.map((ax, i) => {
+                            const angle = angleStep * i - Math.PI / 2;
+                            return (
+                                <line key={ax.key} x1={center} y1={center}
+                                    x2={center + radius * Math.cos(angle)} y2={center + radius * Math.sin(angle)}
+                                    stroke="#1e293b" strokeWidth="1" />
+                            );
+                        })}
+                        <polygon points={polygonPoints} fill={theme.fill} fillOpacity="0.25" stroke={theme.fill} strokeWidth="2" className="drop-shadow-lg" />
+                        {dataPoints.map((p, i) => (
+                            <circle key={i} cx={p.x} cy={p.y} r="3.5" fill="#020617" stroke={axes[i].color} strokeWidth="2" />
+                        ))}
+                        {axes.map((ax, i) => {
+                            const lp = getLabelPoint(i);
+                            return (
+                                <text key={ax.key} x={lp.x} y={lp.y} fill={ax.color} fontSize="11" textAnchor="middle" dominantBaseline="middle" className="font-hud font-bold">
+                                    {ax.label}
+                                </text>
+                            );
+                        })}
+                    </svg>
+                );
+            };
+
+            // --- GRAPH RENDERER (SVG) ---
+            const renderChart = () => {
+                if (logs.length < 2) {
+                    return <div className="text-center text-slate-500 py-6 text-xs font-mono">Belum cukup data untuk membuat grafik evaluasi. Lakukan input minimal 2 kali.</div>;
+                }
+                
+                const data = [...logs].reverse();
+                const w = 320; 
+                const h = 120;
+                const weights = data.map(d => d.weight);
+                const maxW = Math.max(...weights) + 1;
+                const minW = Math.min(...weights) - 1;
+                
+                const getX = (i) => (i / (data.length - 1)) * w;
+                const getY = (val) => h - ((val - minW) / (maxW - minW || 1)) * h;
+
+                const points = data.map((d, i) => `${getX(i)},${getY(d.weight)}`).join(' ');
+
+                // --- BODY COMPOSITION OVERLAY: WAIST & ARM (NORMALIZED TO SAME SCALE) ---
+                const waistVals = data.map(d => d.waist).filter(v => v != null);
+                const armVals = data.map(d => d.arm).filter(v => v != null);
+                const hasWaist = waistVals.length >= 2;
+                const hasArm = armVals.length >= 2;
+                const compMax = Math.max(...waistVals, ...armVals, 1) + 2;
+                const compMin = Math.min(...waistVals, ...armVals, 0) - 2;
+                const getYComp = (val) => h - ((val - compMin) / (compMax - compMin || 1)) * h;
+                const waistPoints = hasWaist ? data.map((d, i) => `${getX(i)},${getYComp(d.waist)}`).join(' ') : '';
+                const armPoints = hasArm ? data.filter(d => d.arm != null).map((d) => {
+                    const idx = data.indexOf(d);
+                    return `${getX(idx)},${getYComp(d.arm)}`;
+                }).join(' ') : '';
+
+                return (
+                    <div className="relative w-full overflow-hidden mt-4 bg-slate-950/70 rounded-lg p-3 border border-slate-800">
+                        {(hasWaist || hasArm) && (
+                            <div className="flex gap-4 mb-2 text-[10px] font-mono">
+                                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full" style={{ background: theme.fill }}></span>Berat Badan</span>
+                                {hasWaist && <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>Lingkar Perut</span>}
+                                {hasArm && <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>Lingkar Lengan</span>}
+                            </div>
+                        )}
+                        <svg viewBox={`0 0 ${w} ${h+20}`} className="w-full h-36 overflow-visible">
+                            {/* Grid Horizontal */}
+                            <line x1="0" y1={h/2} x2={w} y2={h/2} stroke="#334155" strokeDasharray="3" />
+                            {/* Body composition lines (secondary) */}
+                            {hasWaist && <polyline points={waistPoints} fill="none" stroke="#fbbf24" strokeWidth="2" strokeDasharray="4,3" opacity="0.8" />}
+                            {hasArm && <polyline points={armPoints} fill="none" stroke="#34d399" strokeWidth="2" strokeDasharray="4,3" opacity="0.8" />}
+                            {/* Garis Data Berat Badan (primary) */}
+                            <polyline points={points} fill="none" stroke={theme.fill} strokeWidth="3" className="drop-shadow-lg" />
+                            {/* Titik Detail */}
+                            {data.map((d, i) => (
+                                <g key={i}>
+                                    <circle cx={getX(i)} cy={getY(d.weight)} r="4" fill="#020617" stroke={theme.fill} strokeWidth="2" />
+                                    <text x={getX(i)} y={getY(d.weight) - 8} fill="#e2e8f0" fontSize="9" textAnchor="middle" className="font-hud font-bold">{d.weight} kg</text>
+                                    <text x={getX(i)} y={h+15} fill="#64748b" fontSize="8" textAnchor="middle" className="font-mono">{d.date.split(' ')[0]}</text>
+                                </g>
+                            ))}
+                        </svg>
+                    </div>
+                );
+            };
+
+            // ==========================================
+            // SCREEN: ONBOARDING / INTRO
+            // ==========================================
+            if (!hasOnboarded) {
+                return (
+                    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-blue-900/10 blur-[100px] rounded-full pointer-events-none"></div>
+                        
+                        <div className="z-10 w-full max-w-sm bg-slate-900/80 backdrop-blur border border-blue-500/30 rounded-xl p-6 shadow-[0_0_30px_rgba(59,130,246,0.25)]">
+                            <div className="text-center mb-6">
+                                <h1 className="text-2xl font-bold font-hud text-blue-400 tracking-widest">SYSTEM AWAKENING</h1>
+                                <p className="text-xs text-slate-400 font-mono mt-1">Masukkan parameter fisik untuk memulai.</p>
+                            </div>
+                            
+                            <form onSubmit={handleOnboardSubmit} className="space-y-4 text-xs font-mono">
+                                <div>
+                                    <label className="text-slate-400 block mb-1">Nama Hunter:</label>
+                                    <input type="text" required onChange={e=>setPlayerName(e.target.value)} className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-blue-500 focus:outline-none"/>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Umur:</label>
+                                        <input type="number" required onChange={e=>setAge(parseInt(e.target.value))} className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-blue-500/80 focus:outline-none"/>
+                                    </div>
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Tinggi (cm):</label>
+                                        <input type="number" required onChange={e=>setHeight(parseFloat(e.target.value))} className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-blue-500/80 focus:outline-none"/>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Berat (kg):</label>
+                                        <input type="number" step="0.1" required onChange={e=>setCurrentWeight(parseFloat(e.target.value))} className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-blue-500/80 focus:outline-none"/>
+                                    </div>
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Max Pushup:</label>
+                                        <input type="number" required onChange={e=>setMaxPushups(parseInt(e.target.value))} className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-blue-500/80 focus:outline-none"/>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-slate-400 block mb-1">Lingkar Perut (cm):</label>
+                                    <input type="number" required onChange={e=>setWaistCircumference(parseFloat(e.target.value))} className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-blue-500/80 focus:outline-none"/>
+                                </div>
+                                <div>
+                                    <label className="text-slate-400 block mb-1">Target Berat Badan (kg):</label>
+                                    <input type="number" step="0.1" required defaultValue={75} onChange={e=>setTargetWeight(parseFloat(e.target.value))} className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-blue-500/80 focus:outline-none"/>
+                                </div>
+                                
+                                <button type="submit" className="w-full py-3.5 mt-4 bg-blue-600 hover:bg-blue-500 text-white font-hud font-bold tracking-widest rounded transition-all active:scale-95 shadow-[0_0_15px_rgba(59,130,246,0.4)]">
+                                    AWAKEN
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen relative overflow-x-hidden bg-slate-950">
+                    
+                    {/* Background Grid */}
+                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#0f172a_1px,transparent_1px),linear-gradient(to_bottom,#0f172a_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] pointer-events-none"></div>
+
+                    {/* --- HEADER HUD --- */}
+                    <header className={`sticky top-0 z-40 border-b ${theme.border} bg-slate-950/85 backdrop-blur-md transition-all duration-300`}>
+                        <div className="max-w-6xl px-4 py-3 mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
+                            
+                            <div className="flex items-center gap-3">
+                                <div className={`relative flex items-center justify-center w-10 h-10 rounded-lg ${theme.bg} text-slate-950 border ${theme.border} ${theme.glow} animate-pulse`}>
+                                    <IconShield />
+                                </div>
+                                <div>
+                                    <h1 className={`text-sm font-bold tracking-widest uppercase font-hud ${theme.textGlow}`}>
+                                        Solo Leveling System
+                                    </h1>
+                                    <p className="text-[10px] text-slate-400 font-mono">
+                                        STATUS: ACTIVE • LOCAL SYSTEM PORTAL
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 text-xs font-mono">
+                                <button 
+                                    onClick={() => { setSoundEnabled(!soundEnabled); playSound('click'); }} 
+                                    aria-label={soundEnabled ? 'Matikan efek suara' : 'Nyalakan efek suara'}
+                                    className={`p-2.5 min-w-[44px] min-h-[44px] rounded border flex items-center justify-center gap-1 transition-all ${soundEnabled ? `${theme.border} ${theme.subBg} ${theme.text}` : 'border-slate-800 bg-slate-900/50 text-slate-500'}`}
+                                >
+                                    {soundEnabled ? <IconVolume2 /> : <IconVolumeX />}
+                                    <span className="hidden md:inline">{soundEnabled ? 'SFX ON' : 'SFX OFF'}</span>
+                                </button>
+
+                                <button
+                                    onClick={triggerBrowserNotification}
+                                    aria-label="Uji notifikasi pengingat harian"
+                                    className={`p-2.5 min-w-[44px] min-h-[44px] rounded border flex items-center justify-center ${theme.border} ${theme.subBg} ${theme.text} hover:scale-105 active:scale-95 transition-all`}
+                                    title="Uji Notifikasi Pengingat Harian"
+                                >
+                                    <IconBell />
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        playSound('click');
+                                        setSettingsDraft({ playerName, age, height, currentWeight, targetWeight, maxPushups, waistCircumference });
+                                        setShowSettings(true);
+                                    }}
+                                    aria-label="Buka pengaturan biodata dan target"
+                                    className={`p-2.5 min-w-[44px] min-h-[44px] rounded border flex items-center justify-center ${theme.border} ${theme.subBg} ${theme.text} hover:scale-105 active:scale-95 transition-all hover:rotate-45 duration-300`}
+                                    title="Ubah Biodata & Target"
+                                >
+                                    <IconSettings />
+                                </button>
+
+                                <div className="flex items-center gap-1 px-3 py-1.5 rounded-md bg-orange-950/30 border border-orange-500/20 text-orange-400">
+                                    <IconFlame />
+                                    <span>STREAK: <strong>{streak} HARI</strong></span>
+                                </div>
+
+                                <button 
+                                    onClick={startNewDay}
+                                    className={`flex items-center gap-1 px-3 py-1.5 rounded-md ${theme.subBg} border ${theme.border} ${theme.text} transition-colors`}
+                                >
+                                    <IconRefresh />
+                                    <span>RESET</span>
+                                </button>
+                            </div>
+
+                        </div>
+                    </header>
+
+                    {/* --- SETTINGS MODAL: EDIT BIODATA & TARGET WEIGHT --- */}
+                    {showSettings && settingsDraft && (
+                        <div className="fixed inset-0 z-[80] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+                            <div className={`w-full max-w-md bg-slate-900 border ${theme.border} rounded-xl p-6 relative ${theme.glow} max-h-[90vh] overflow-y-auto`}>
+                                <button
+                                    onClick={() => { playSound('click'); setShowSettings(false); }}
+                                    aria-label="Tutup pengaturan"
+                                    className="absolute top-2 right-2 w-11 h-11 flex items-center justify-center text-slate-500 hover:text-white text-lg rounded-full hover:bg-slate-800/60 transition-colors"
+                                >✕</button>
+                                <h3 className={`text-sm font-bold tracking-widest uppercase font-hud border-b border-slate-800 pb-2 mb-4 ${theme.text}`}>
+                                    ⚙️ PENGATURAN BIODATA HUNTER
+                                </h3>
+                                <div className="space-y-3 text-xs font-mono">
+                                    <div>
+                                        <label className="text-slate-400 block mb-1">Nama Hunter:</label>
+                                        <input type="text" value={settingsDraft.playerName}
+                                            onChange={e => setSettingsDraft({ ...settingsDraft, playerName: e.target.value })}
+                                            className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-cyan-500 focus:outline-none" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Umur:</label>
+                                            <input type="number" value={settingsDraft.age}
+                                                onChange={e => setSettingsDraft({ ...settingsDraft, age: parseInt(e.target.value) || 0 })}
+                                                className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-cyan-500 focus:outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Tinggi (cm):</label>
+                                            <input type="number" value={settingsDraft.height}
+                                                onChange={e => setSettingsDraft({ ...settingsDraft, height: parseFloat(e.target.value) || 0 })}
+                                                className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-cyan-500 focus:outline-none" />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Berat Saat Ini (kg):</label>
+                                            <input type="number" step="0.1" value={settingsDraft.currentWeight}
+                                                onChange={e => setSettingsDraft({ ...settingsDraft, currentWeight: parseFloat(e.target.value) || 0 })}
+                                                className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-cyan-500 focus:outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Target Berat (kg):</label>
+                                            <input type="number" step="0.1" value={settingsDraft.targetWeight}
+                                                onChange={e => setSettingsDraft({ ...settingsDraft, targetWeight: parseFloat(e.target.value) || 0 })}
+                                                className="w-full p-2.5 rounded bg-slate-950 border border-cyan-700/50 text-white focus:border-cyan-500 focus:outline-none" />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Max Pushup:</label>
+                                            <input type="number" value={settingsDraft.maxPushups}
+                                                onChange={e => setSettingsDraft({ ...settingsDraft, maxPushups: parseInt(e.target.value) || 0 })}
+                                                className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-cyan-500 focus:outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-slate-400 block mb-1">Lingkar Perut (cm):</label>
+                                            <input type="number" value={settingsDraft.waistCircumference}
+                                                onChange={e => setSettingsDraft({ ...settingsDraft, waistCircumference: parseFloat(e.target.value) || 0 })}
+                                                className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-cyan-500 focus:outline-none" />
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 pt-1">
+                                        Mengubah Berat Saat Ini/Target akan langsung menyesuaikan Rank, tema warna, dan menu latihan.
+                                    </p>
+
+                                    {/* THEME PREVIEW BASED ON DRAFT WEIGHT */}
+                                    {(() => {
+                                        const previewTheme = getTheme(settingsDraft.currentWeight);
+                                        return (
+                                            <div className={`flex items-center justify-between p-2.5 rounded border ${previewTheme.border} ${previewTheme.subBg}`}>
+                                                <span className="text-[10px] text-slate-400">Preview Tema Rank:</span>
+                                                <span className={`text-xs font-bold font-hud ${previewTheme.text} flex items-center gap-2`}>
+                                                    <span className={`w-3 h-3 rounded-full ${previewTheme.bg}`}></span>
+                                                    {previewTheme.name}
+                                                </span>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* CUSTOM REMINDER HOURS */}
+                                    <div className="pt-2 border-t border-slate-800/70">
+                                        <label className="text-slate-400 block mb-1">Jam Pengingat Harian (pisahkan koma, format 24 jam):</label>
+                                        <input type="text" defaultValue={reminderHours.join(', ')}
+                                            onBlur={e => {
+                                                const parsed = e.target.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n >= 0 && n <= 23);
+                                                if (parsed.length > 0) setReminderHours(parsed);
+                                            }}
+                                            placeholder="Contoh: 18, 21, 23"
+                                            className="w-full p-2.5 rounded bg-slate-950 border border-slate-700 text-white focus:border-cyan-500 focus:outline-none" />
+                                    </div>
+
+                                    <button
+                                        onClick={() => {
+                                            playSound('questComplete');
+                                            setPlayerName(settingsDraft.playerName);
+                                            setAge(settingsDraft.age);
+                                            setHeight(settingsDraft.height);
+                                            setCurrentWeight(settingsDraft.currentWeight);
+                                            setTargetWeight(settingsDraft.targetWeight);
+                                            setMaxPushups(settingsDraft.maxPushups);
+                                            setWaistCircumference(settingsDraft.waistCircumference);
+                                            setShowSettings(false);
+                                            triggerAlert("BIODATA DIPERBARUI", "Data profil Hunter berhasil disinkronisasi ke sistem.", false);
+                                        }}
+                                        className={`w-full py-2.5 mt-2 bg-gradient-to-r ${theme.grad} text-white font-hud font-bold uppercase rounded tracking-wider text-xs transition-all active:scale-95 ${theme.glow}`}
+                                    >
+                                        SIMPAN PERUBAHAN
+                                    </button>
+
+                                    {/* EXPORT / IMPORT / INSTALL */}
+                                    <div className="pt-3 border-t border-slate-800/70 space-y-2">
+                                        <p className="text-[10px] text-slate-500 uppercase tracking-widest">Data & Aplikasi</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button onClick={handleExportData}
+                                                className="py-2 rounded border border-slate-700 bg-slate-950 text-slate-300 text-[11px] font-bold hover:border-cyan-500 transition-colors">
+                                                ⬇️ Export Data
+                                            </button>
+                                            <label className="py-2 rounded border border-slate-700 bg-slate-950 text-slate-300 text-[11px] font-bold hover:border-cyan-500 transition-colors text-center cursor-pointer">
+                                                ⬆️ Import Data
+                                                <input type="file" accept=".json" className="hidden" onChange={e => handleImportData(e.target.files[0])} />
+                                            </label>
+                                        </div>
+                                        {isInstallable && (
+                                            <button onClick={handleInstallApp}
+                                                className={`w-full py-2 rounded border ${theme.border} ${theme.subBg} ${theme.text} text-[11px] font-bold hover:scale-[1.01] transition-transform`}>
+                                                📲 Install App ke Home Screen
+                                            </button>
+                                        )}
+                                    </div>
+
+                                    {/* DANGER ZONE: FULL DATA WIPE */}
+                                    <div className="pt-3 border-t border-red-900/40 space-y-2">
+                                        <p className="text-[10px] text-red-400/80 uppercase tracking-widest font-bold">⚠️ Zona Berbahaya</p>
+                                        <button
+                                            onClick={handleFullResetData}
+                                            className="w-full py-2.5 rounded border border-red-700/60 bg-red-950/30 text-red-400 text-[11px] font-bold hover:bg-red-900/40 hover:border-red-500 transition-colors"
+                                        >
+                                            🗑️ HAPUS SEMUA DATA & MULAI DARI NOL
+                                        </button>
+                                        <p className="text-[9px] text-slate-500">
+                                            Menghapus level, XP, stats, riwayat evaluasi, trophy, dan seluruh progres Hunter secara permanen dari perangkat ini.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- BOOT SPLASH: SYSTEM ONLINE NOTIFICATION ON ENTRY --- */}
+                    {showBootSplash && (
+                        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-sm animate-[cineTextIn_2.4s_ease-out_forwards]">
+                            <div className={`w-full max-w-sm p-6 rounded-lg border ${theme.border} bg-slate-900/80 ${theme.glow} text-center relative overflow-hidden`}>
+                                <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-cyan-500"></div>
+                                <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-cyan-500"></div>
+                                <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-cyan-500"></div>
+                                <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-cyan-500"></div>
+                                <p className="text-[10px] font-mono text-cyan-400 tracking-[0.3em] mb-2">● SYSTEM ONLINE</p>
+                                <h2 className={`text-xl font-hud font-black tracking-wider ${theme.textGlow}`}>
+                                    SELAMAT DATANG, {playerName ? playerName.toUpperCase() : 'HUNTER'}
+                                </h2>
+                                <p className="text-xs text-slate-400 font-mono mt-2">
+                                    {now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                                </p>
+                                <p className="text-lg text-white font-hud font-bold mt-1 tracking-widest">
+                                    {now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                </p>
+                                <div className="mt-3 grid grid-cols-2 gap-2 text-[10px] font-mono">
+                                    <div className="p-2 rounded bg-slate-950/60 border border-slate-800">
+                                        <p className="text-slate-500">LEVEL</p>
+                                        <p className={`font-bold ${theme.text}`}>{skillLevel}</p>
+                                    </div>
+                                    <div className="p-2 rounded bg-slate-950/60 border border-slate-800">
+                                        <p className="text-slate-500">STREAK</p>
+                                        <p className="font-bold text-orange-400">{streak} Hari</p>
+                                    </div>
+                                </div>
+                                <p className="text-[9px] text-slate-500 font-mono mt-4">
+                                    Waktu dihitung otomatis mengikuti jam perangkat ini.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* --- CINEMATIC OVERLAY: LEVEL UP / DUNGEON CLEAR --- */}
+                    {cinematicEvent && (
+                        <div className="fixed inset-0 z-[70] flex items-center justify-center pointer-events-none overflow-hidden">
+                            {/* Flash */}
+                            <div className="absolute inset-0 bg-white animate-[cineFlash_0.6s_ease-out_forwards]"></div>
+                            {/* Radial energy ring */}
+                            <div className={`absolute w-4 h-4 rounded-full ${cinematicEvent.type === 'levelup' ? 'bg-cyan-400' : 'bg-emerald-400'} animate-[cineRing_1.4s_ease-out_forwards]`}></div>
+                            {/* Particles */}
+                            {Array.from({ length: 18 }).map((_, i) => {
+                                const angle = (360 / 18) * i;
+                                const dist = 140 + (i % 4) * 30;
+                                return (
+                                    <span
+                                        key={i}
+                                        className={`absolute w-1.5 h-1.5 rounded-full ${cinematicEvent.type === 'levelup' ? 'bg-cyan-300' : 'bg-emerald-300'} animate-[cineParticle_1.2s_ease-out_forwards]`}
+                                        style={{ '--angle': `${angle}deg`, '--dist': `${dist}px`, animationDelay: `${0.1 + (i % 5) * 0.03}s` }}
+                                    ></span>
+                                );
+                            })}
+                            {/* Center Text */}
+                            <div className="relative z-10 text-center animate-[cineTextIn_0.9s_ease-out_forwards]">
+                                {cinematicEvent.type === 'levelup' ? (
+                                    <>
+                                        <p className="text-cyan-300 font-hud tracking-[0.4em] text-xs mb-2">SYSTEM NOTIFICATION</p>
+                                        <h1 className="text-5xl sm:text-7xl font-hud font-black text-white tracking-wider drop-shadow-[0_0_25px_rgba(34,211,238,0.9)]">
+                                            LEVEL UP!
+                                        </h1>
+                                        <p className="mt-3 font-hud text-2xl sm:text-3xl font-bold text-cyan-300 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)]">
+                                            LV. {cinematicEvent.level}
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-emerald-300 font-hud tracking-[0.4em] text-xs mb-2">DUNGEON STATUS</p>
+                                        <h1 className="text-4xl sm:text-6xl font-hud font-black text-white tracking-wider drop-shadow-[0_0_25px_rgba(52,211,153,0.9)]">
+                                            DUNGEON CLEAR
+                                        </h1>
+                                        <p className="mt-3 font-hud text-lg sm:text-xl font-bold text-emerald-300 drop-shadow-[0_0_15px_rgba(52,211,153,0.8)]">
+                                            DAY {cinematicEvent.day} SECURED
+                                        </p>
+                                    </>
+                                )}
+                            </div>
+                            <style>{`
+                                @keyframes cineFlash { 0% { opacity: 0.85; } 100% { opacity: 0; } }
+                                @keyframes cineRing { 0% { width: 0; height: 0; opacity: 0.9; box-shadow: 0 0 0 0 currentColor; } 100% { width: 900px; height: 900px; opacity: 0; box-shadow: 0 0 0 2px currentColor; } }
+                                @keyframes cineTextIn { 0% { opacity: 0; transform: scale(0.7); } 30% { opacity: 1; transform: scale(1.08); } 45% { transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; transform: scale(1.02); } }
+                                @keyframes cineParticle {
+                                    0% { transform: translate(0, 0) scale(1); opacity: 1; }
+                                    100% { transform: translate(calc(cos(var(--angle)) * var(--dist)), calc(sin(var(--angle)) * var(--dist))) scale(0); opacity: 0; }
+                                }
+                            `}</style>
+                        </div>
+                    )}
+
+                    {/* --- POPUP ALERT SYSTEM --- */}
+                    {systemAlert && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+                            <div className={`w-full max-w-md p-6 rounded-lg border-2 ${theme.glow} bg-slate-900 ${systemAlert.isWarning ? 'border-red-500' : theme.border}`}>
+                                <div className="flex items-start gap-4">
+                                    <div className={`p-3 rounded-full ${systemAlert.isWarning ? 'bg-red-950 text-red-400' : 'bg-cyan-950 text-cyan-400'}`}>
+                                        {systemAlert.isWarning ? <IconAlertTriangle /> : <IconAward />}
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className={`text-lg font-bold font-hud tracking-wider ${systemAlert.isWarning ? 'text-red-400' : theme.text}`}>
+                                            {systemAlert.title}
+                                        </h3>
+                                        <p className="mt-2 text-sm text-slate-300 leading-relaxed font-sub">
+                                            {systemAlert.message}
+                                        </p>
+                                        <button
+                                            onClick={() => { playSound('click'); setSystemAlert(null); }}
+                                            className={`mt-5 w-full py-2 bg-gradient-to-r ${theme.grad} text-white text-xs font-bold font-hud tracking-widest rounded uppercase transition-colors`}
+                                        >
+                                            TERIMA PESAN SISTEM
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <main className="max-w-6xl px-4 py-8 mx-auto pb-24 sm:pb-8">
+                        
+                        {/* --- STATUS HEADER --- */}
+                        <section className={`mb-8 p-6 rounded-xl border ${theme.border} bg-slate-900/60 relative overflow-hidden`}>
+                            <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-500"></div>
+                            <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-500"></div>
+                            <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-500"></div>
+                            <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-blue-500"></div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+                                
+                                <div className="flex items-center gap-4">
+                                    <div className={`relative w-20 h-20 rounded-full bg-slate-950 border-4 border-cyan-500/80 flex flex-col items-center justify-center ${theme.glow}`}>
+                                        <span className="text-[10px] text-slate-400 uppercase tracking-widest font-hud">LV</span>
+                                        <span className="text-3xl font-extrabold text-white font-hud leading-none">
+                                            {currentHunterLevel}
+                                        </span>
+                                        <div className="absolute -bottom-2 px-2 py-0.5 bg-cyan-500 text-[9px] text-slate-950 font-bold font-hud rounded uppercase">
+                                            {isShadowHunter ? 'SHADOW' : 'HUNTER'}
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                value={playerName}
+                                                onChange={(e) => setPlayerName(e.target.value)}
+                                                className="text-lg font-bold text-white tracking-wide bg-transparent border-b border-transparent hover:border-slate-700 focus:border-cyan-500 focus:outline-none transition-all w-40"
+                                                placeholder="Nama Hunter..."
+                                            />
+                                            <IconUser />
+                                        </div>
+                                        <p className="text-xs text-cyan-400 font-mono mt-1">
+                                            Rank saat ini: <span className="font-bold">{theme.name}</span>
+                                        </p>
+                                        <p className="text-xs text-slate-400 mt-0.5">
+                                            Target: {targetWeight} kg (Sisa {Math.max(0, currentWeight - targetWeight).toFixed(1)} kg)
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-col justify-center">
+                                    <div className="flex justify-between items-end mb-1">
+                                        <span className="text-xs font-hud text-slate-300">
+                                            PROGRESS XP (SKILL LV {skillLevel})
+                                        </span>
+                                        <span className={`text-xs font-mono ${theme.text} font-bold`}>
+                                            {xp} / {xpToNextLevel} XP
+                                        </span>
+                                    </div>
+                                    <div className="w-full h-3 bg-slate-950 rounded-full overflow-hidden border border-slate-800 p-0.5">
+                                        <div 
+                                            className="h-full bg-gradient-to-r from-blue-600 via-cyan-500 to-teal-400 rounded-full transition-all duration-500"
+                                            style={{ width: `${Math.min(100, (xp / xpToNextLevel) * 100)}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                                        *Sistem otomatis mengatur variasi dan beban latihan berdasarkan berat badan Anda!
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-2 text-center">
+                                    <div className="p-2 rounded bg-slate-950/60 border border-slate-800">
+                                        <p className="text-[10px] text-slate-500 font-mono">BERAT</p>
+                                        <p className="text-base font-bold text-white font-mono">{currentWeight} <span className="text-[10px] text-slate-400">KG</span></p>
+                                    </div>
+                                    <div className="p-2 rounded bg-slate-950/60 border border-slate-800">
+                                        <p className="text-[10px] text-slate-500 font-mono">PUSH UP</p>
+                                        <p className="text-base font-bold text-white font-mono">{maxPushups} <span className="text-[10px] text-slate-400">RPS</span></p>
+                                    </div>
+                                    <div className="p-2 rounded bg-slate-950/60 border border-slate-800">
+                                        <p className="text-[10px] text-slate-500 font-mono">PERUT</p>
+                                        <p className="text-base font-bold text-white font-mono">{waistCircumference} <span className="text-[10px] text-slate-400">CM</span></p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </section>
+
+                        {/* --- TABS (DESKTOP) --- */}
+                        <div className="hidden sm:flex flex-wrap border-b border-slate-800 gap-1 mb-6 font-hud">
+                            {[
+                                { id: 'status', label: '📊 Status', icon: IconActivity },
+                                { id: 'daily', label: '✅ Harian', icon: IconCheckCircle },
+                                { id: 'workout', label: '⚔️ Dungeon Latihan', icon: IconDumbbell },
+                                { id: 'food', label: '🍎 Nutrisi', icon: IconHeart },
+                                { id: 'logs', label: '📈 Evaluasi', icon: IconTrendingDown },
+                            ].map((tab) => {
+                                const Icon = tab.icon;
+                                const isActive = activeTab === tab.id;
+                                return (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => { playSound('click'); setActiveTab(tab.id); }}
+                                        className={`flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-bold uppercase tracking-wider border-b-2 transition-all ${
+                                            isActive 
+                                                ? `border-cyan-500 ${theme.text} bg-slate-900/40 font-bold` 
+                                                : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/20'
+                                        }`}
+                                    >
+                                        <Icon />
+                                        <span>{tab.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* --- TAB CONTENT --- */}
+                        <div key={activeTab} className="space-y-6 animate-[tabFadeIn_0.35s_ease-out]">
+                            
+                            {/* STATUS WINDOW */}
+                            {activeTab === 'status' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div className="lg:col-span-2 space-y-6">
+
+                                        {/* HUNTER ATTRIBUTE MATRIX: RADAR + TOTAL POWER */}
+                                        <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/50 relative overflow-hidden">
+                                            <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-4">
+                                                <h3 className={`text-sm font-bold tracking-widest uppercase font-hud ${theme.text}`}>
+                                                    🛡️ HUNTER ATTRIBUTE MATRIX
+                                                </h3>
+                                                <span className="text-[10px] font-mono text-slate-400">
+                                                    TOTAL POWER <strong className={`text-lg ml-1 ${theme.textGlow}`}>{stats.STR + stats.AGI + stats.END + stats.VIT + stats.DISC}</strong>
+                                                </span>
+                                            </div>
+                                            {renderRadarChart()}
+                                        </div>
+
+                                        {/* GLOWING RPG STAT CARDS */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                            {[
+                                                { key: 'STR', name: 'STR', full: 'Strength', val: stats.STR, color: 'from-red-600 to-orange-500', ring: 'border-red-500/40', txt: 'text-red-400', glow: 'shadow-[0_0_18px_rgba(239,68,68,0.35)]', icon: '💪', desc: 'Daya dorong push up.' },
+                                                { key: 'AGI', name: 'AGI', full: 'Agility', val: stats.AGI, color: 'from-amber-500 to-yellow-400', ring: 'border-amber-500/40', txt: 'text-amber-400', glow: 'shadow-[0_0_18px_rgba(245,158,11,0.35)]', icon: '⚡', desc: 'Kecepatan bakar lemak.' },
+                                                { key: 'END', name: 'END', full: 'Endurance', val: stats.END, color: 'from-green-600 to-emerald-500', ring: 'border-emerald-500/40', txt: 'text-emerald-400', glow: 'shadow-[0_0_18px_rgba(16,185,129,0.35)]', icon: '🫀', desc: 'Stamina EMOM/HIIT.' },
+                                                { key: 'VIT', name: 'VIT', full: 'Vitality', val: stats.VIT, color: 'from-blue-600 to-cyan-500', ring: 'border-cyan-500/40', txt: 'text-cyan-400', glow: 'shadow-[0_0_18px_rgba(6,182,212,0.35)]', icon: '🔷', desc: 'Kualitas istirahat.' },
+                                                { key: 'DISC', name: 'DISC', full: 'Discipline', val: stats.DISC, color: 'from-purple-600 to-pink-500', ring: 'border-purple-500/40', txt: 'text-purple-400', glow: 'shadow-[0_0_18px_rgba(168,85,247,0.35)]', icon: '🧠', desc: 'Konsistensi mental.' },
+                                            ].map((attr) => {
+                                                const lvl = Math.floor(attr.val / 20) + 1;
+                                                return (
+                                                    <div key={attr.key} className={`relative p-3 rounded-lg bg-slate-950/70 border ${attr.ring} ${attr.glow} overflow-hidden group hover:scale-[1.03] transition-transform`}>
+                                                        {/* corner brackets */}
+                                                        <div className={`absolute top-0 left-0 w-2.5 h-2.5 border-t-2 border-l-2 ${attr.ring}`}></div>
+                                                        <div className={`absolute top-0 right-0 w-2.5 h-2.5 border-t-2 border-r-2 ${attr.ring}`}></div>
+                                                        <div className={`absolute bottom-0 left-0 w-2.5 h-2.5 border-b-2 border-l-2 ${attr.ring}`}></div>
+                                                        <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 border-b-2 border-r-2 ${attr.ring}`}></div>
+                                                        {/* sheen */}
+                                                        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+
+                                                        <div className="flex items-center justify-between mb-1">
+                                                            <span className={`font-hud font-black text-sm tracking-wider ${attr.txt}`}>{attr.icon} {attr.name}</span>
+                                                            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border ${attr.ring} ${attr.txt}`}>Lv.{lvl}</span>
+                                                        </div>
+                                                        <p className="text-[9px] text-slate-500 font-mono mb-2 truncate">{attr.desc}</p>
+                                                        <div className="flex items-end justify-between mb-1">
+                                                            <span className="text-xl font-hud font-black text-white">{attr.val}</span>
+                                                            <span className="text-[9px] text-slate-500 font-mono">/100</span>
+                                                        </div>
+                                                        <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                                                            <div className={`h-full bg-gradient-to-r ${attr.color} transition-all duration-500`} style={{ width: `${Math.min(100, attr.val)}%` }}></div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* DUNGEON DEADLINE COUNTDOWN */}
+                                        {(() => {
+                                            const midnight = new Date(now); midnight.setHours(24, 0, 0, 0);
+                                            const msLeft = Math.max(0, midnight - now);
+                                            const hh = String(Math.floor(msLeft / 3600000)).padStart(2, '0');
+                                            const mm = String(Math.floor((msLeft % 3600000) / 60000)).padStart(2, '0');
+                                            const ss = String(Math.floor((msLeft % 60000) / 1000)).padStart(2, '0');
+                                            const totalDayMs = 24 * 3600000;
+                                            const pct = Math.max(0, Math.min(100, (msLeft / totalDayMs) * 100));
+                                            const urgency = workoutCompletedToday ? 'done' : (pct > 50 ? 'safe' : pct > 20 ? 'warn' : 'danger');
+                                            const urgencyMap = {
+                                                done: { bar: 'from-emerald-500 to-emerald-400', text: 'text-emerald-400', border: 'border-emerald-500/40' },
+                                                safe: { bar: 'from-emerald-500 to-cyan-400', text: 'text-emerald-300', border: 'border-emerald-500/30' },
+                                                warn: { bar: 'from-amber-500 to-yellow-400', text: 'text-amber-300', border: 'border-amber-500/40' },
+                                                danger: { bar: 'from-red-600 to-orange-500', text: 'text-red-400', border: 'border-red-500/50' },
+                                            };
+                                            const u = urgencyMap[urgency];
+                                            return (
+                                                <div className={`p-5 rounded-xl border ${u.border} bg-slate-900/50 relative overflow-hidden`}>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <h4 className="text-xs font-bold font-hud uppercase tracking-widest text-slate-300">⏳ Sisa Waktu Dungeon Hari Ini</h4>
+                                                        {workoutCompletedToday && <span className="text-[10px] font-mono text-emerald-400 font-bold">✓ SELESAI</span>}
+                                                    </div>
+                                                    <div className={`text-3xl sm:text-4xl font-hud font-black tracking-widest ${u.text}`}>
+                                                        {hh}:{mm}:{ss}
+                                                    </div>
+                                                    <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden mt-3 border border-slate-800">
+                                                        <div className={`h-full bg-gradient-to-r ${u.bar} transition-all duration-1000`} style={{ width: `${pct}%` }}></div>
+                                                    </div>
+                                                    {!workoutCompletedToday && (
+                                                        <button
+                                                            onClick={() => { playSound('click'); setActiveTab('workout'); }}
+                                                            className={`mt-4 w-full py-2.5 bg-gradient-to-r ${theme.grad} text-white font-hud font-bold text-xs uppercase tracking-widest rounded-lg ${theme.glow} active:scale-[0.98] transition-all`}
+                                                        >
+                                                            ⚔️ Mulai Dungeon Sekarang
+                                                        </button>
+                                                    )}
+                                                    <p className="text-[10px] text-slate-500 font-mono mt-2 text-center">
+                                                        Notifikasi pengingat otomatis pukul 18:00, 21:00, dan 23:00 jika belum selesai.
+                                                    </p>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    <div className="space-y-6">
+                                        <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/50">
+                                            <h3 className={`text-sm font-bold tracking-widest uppercase font-hud border-b border-slate-800 pb-2 mb-3 ${theme.text}`}>
+                                                ⚖️ DYNAMIC WORKOUT STATUS
+                                            </h3>
+                                            <div className={`p-4 rounded-lg border text-xs leading-relaxed ${getRank().class}`}>
+                                                <p className="font-bold font-hud uppercase mb-1">Dungeon Level: {getRank().rank}</p>
+                                                <p className="text-slate-300">
+                                                    Sistem mendeteksi berat badan Anda berada di angka <strong className="text-white">{currentWeight} kg</strong>. Menu latihan disesuaikan secara otomatis agar aman untuk sendi lutut namun tetap optimal membakar lemak!
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-6 rounded-xl border border-orange-950 bg-gradient-to-b from-slate-900 to-orange-950/20 relative overflow-hidden">
+                                            <h4 className="text-xs font-bold font-hud text-orange-400 uppercase tracking-widest mb-1">
+                                                🔓 HIDDEN QUEST: DISCIPLINE GATE
+                                            </h4>
+                                            <p className="text-[11px] text-slate-300 mb-3">
+                                                Selesaikan latihan berturut-turut tanpa jeda bolos untuk klaim hadiah khusus!
+                                            </p>
+                                            <div className="flex justify-between p-2 rounded bg-slate-950/60 border border-orange-500/10 mb-3 text-xs font-mono text-orange-400">
+                                                <span>Total Latihan:</span>
+                                                <strong>{streak} Hari Aktif</strong>
+                                            </div>
+                                        </div>
+
+                                        {/* ACHIEVEMENTS / TROPHY CASE */}
+                                        <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/50">
+                                            <h4 className={`text-xs font-bold font-hud uppercase tracking-widest mb-3 flex items-center justify-between ${theme.text}`}>
+                                                <span>🏆 TROPHY CASE</span>
+                                                <span className="text-[10px] text-slate-500">{unlockedAchievements.length}/{ACHIEVEMENTS.length}</span>
+                                            </h4>
+                                            <div className="grid grid-cols-4 gap-2">
+                                                {ACHIEVEMENTS.map(a => {
+                                                    const unlocked = unlockedAchievements.includes(a.id);
+                                                    return (
+                                                        <div key={a.id} title={`${a.title} — ${a.desc}`}
+                                                            className={`aspect-square rounded-lg flex items-center justify-center text-lg border transition-all ${
+                                                                unlocked ? `${theme.border} ${theme.subBg} ${theme.glow}` : 'border-slate-800 bg-slate-950/60 grayscale opacity-30'
+                                                            }`}>
+                                                            {a.icon}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* SKILL TREE */}
+                                        <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/50">
+                                            <h4 className={`text-xs font-bold font-hud uppercase tracking-widest mb-3 ${theme.text}`}>
+                                                🌳 SKILL TREE
+                                            </h4>
+                                            <div className="space-y-2">
+                                                {SKILL_TREE.map(s => (
+                                                    <div key={s.name} className={`flex items-center justify-between p-2.5 rounded border text-xs font-mono ${
+                                                        s.unlocked ? `${theme.border} ${theme.subBg} text-white` : 'border-slate-850 bg-slate-950/40 text-slate-600'
+                                                    }`}>
+                                                        <span className="flex items-center gap-2">
+                                                            <span>{s.unlocked ? s.icon : '🔒'}</span>
+                                                            {s.name}
+                                                        </span>
+                                                        <span className={s.unlocked ? theme.text : ''}>Lv.{s.level}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* DAILY QUESTS */}
+                            {activeTab === 'daily' && (
+                                <div className="max-w-3xl mx-auto p-6 rounded-xl border border-slate-800 bg-slate-900/50 space-y-4">
+                                    <div className="border-b border-slate-800 pb-3 flex items-center justify-between flex-wrap gap-2">
+                                        <h3 className={`text-lg font-bold tracking-widest uppercase font-hud ${theme.text}`}>
+                                            📅 MISI HARIAN (DAILY QUEST)
+                                        </h3>
+                                        <span className={`text-[10px] font-mono px-2 py-1 rounded border ${theme.border} ${theme.subBg} ${theme.text}`}>
+                                            Disesuaikan untuk {dailyQuestConfig.label}
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {[
+                                            { key: 'steps', ...dailyQuestConfig.steps, xp: `+${dailyQuestConfig.steps.xp} XP`, color: 'border-cyan-500/50', icon: IconFootprints },
+                                            { key: 'sleep', ...dailyQuestConfig.sleep, xp: `+${dailyQuestConfig.sleep.xp} XP`, color: 'border-purple-500/50', icon: IconMoon },
+                                        ].map((quest) => {
+                                            const Icon = quest.icon;
+                                            const isDone = dailyQuests[quest.key];
+                                            return (
+                                                <div 
+                                                    key={quest.key}
+                                                    onClick={() => handleDailyCheck(quest.key)}
+                                                    className={`flex items-center justify-between p-4 rounded-lg border cursor-pointer transition-all ${
+                                                        isDone ? 'bg-emerald-950/20 border-emerald-500 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]' : 'bg-slate-950/60 border-slate-850 hover:border-slate-800'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-4">
+                                                        <div className={`p-2.5 rounded ${isDone ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 text-slate-400'}`}>
+                                                            <Icon />
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="text-sm font-bold font-hud">{quest.title} {isDone && "✓"}</h4>
+                                                            <p className="text-xs text-slate-400 mt-0.5">{quest.desc}</p>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-xs font-mono font-bold text-cyan-400">{quest.xp}</span>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {/* QUICK WATER LOG WIDGET */}
+                                        {(() => {
+                                            const target = dailyQuestConfig.water.targetMl;
+                                            const pct = Math.min(100, (waterMl / target) * 100);
+                                            const isDone = dailyQuests.water;
+                                            return (
+                                                <div className={`p-4 rounded-lg border transition-all ${
+                                                    isDone ? 'bg-emerald-950/20 border-emerald-500 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.15)]' : 'bg-slate-950/60 border-blue-500/50'
+                                                }`}>
+                                                    <div className="flex items-center gap-4 mb-3">
+                                                        <div className={`p-2.5 rounded ${isDone ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 text-blue-400'}`}>
+                                                            <IconDroplet />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <h4 className="text-sm font-bold font-hud">{dailyQuestConfig.water.title} {isDone && "✓"}</h4>
+                                                            <p className="text-xs text-slate-400 mt-0.5">{dailyQuestConfig.water.desc}</p>
+                                                        </div>
+                                                        <span className="text-xs font-mono font-bold text-cyan-400">+{dailyQuestConfig.water.xp} XP</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-1">
+                                                        <span>{waterMl} ml / {target} ml</span>
+                                                        <span>{Math.round(pct)}%</span>
+                                                    </div>
+                                                    <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden mb-3 border border-slate-800">
+                                                        <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500" style={{ width: `${pct}%` }}></div>
+                                                    </div>
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        {[
+                                                            { label: '+250ml', amt: 250 },
+                                                            { label: '+500ml', amt: 500 },
+                                                            { label: '+1000ml', amt: 1000 },
+                                                        ].map(btn => (
+                                                            <button key={btn.amt} onClick={() => handleAddWater(btn.amt)}
+                                                                className="flex-1 py-2 rounded border border-blue-700/40 bg-blue-950/30 text-blue-300 text-[11px] font-bold hover:bg-blue-900/40 active:scale-95 transition-all">
+                                                                💧 {btn.label}
+                                                            </button>
+                                                        ))}
+                                                        <button onClick={() => handleAddWater(-250)}
+                                                            className="px-3 py-2 rounded border border-slate-700 bg-slate-900 text-slate-400 text-[11px] font-bold hover:border-slate-600 active:scale-95 transition-all">
+                                                            ↺
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+
+                                    <div className="p-4 rounded-lg border border-red-900/40 bg-red-950/20 mt-6">
+                                        <div className="flex gap-3">
+                                            <div className="text-red-500 mt-0.5"><IconAlertTriangle /></div>
+                                            <div>
+                                                <h4 className="text-xs font-bold font-hud text-red-400 uppercase">PENALTI KEDISIPLINAN SISTEM</h4>
+                                                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                                                    Jika Anda membatalkan atau tidak melakukan latihan terjadwal hari ini tanpa alasan darurat medis yang rasional, Anda wajib menerapkan penalti di bawah ini.
+                                                </p>
+                                                <button
+                                                    disabled={workoutPenaltyClaimed}
+                                                    onClick={handlePenalty}
+                                                    className="mt-3 px-4 py-2 bg-red-950/60 border border-red-500 hover:bg-red-900 text-red-400 font-mono text-xs font-bold rounded tracking-wider uppercase transition-colors"
+                                                >
+                                                    {workoutPenaltyClaimed ? "PENALTI DI-TERAPKAN (-20 XP)" : "Gagal Latihan: Terapkan Penalti"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* WORKOUT DUNGEON */}
+                            {activeTab === 'workout' && (
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div className="space-y-3">
+                                        <h3 className="text-xs font-bold tracking-widest text-slate-400 uppercase font-hud px-1">
+                                            🗝️ PILIH HARI LATIHAN
+                                        </h3>
+                                        {[1, 2, 3, 4, 5].map((dayNum) => {
+                                            const dayData = workouts[dayNum];
+                                            const isSelected = selectedDay === dayNum;
+                                            return (
+                                                <button
+                                                    key={dayNum}
+                                                    disabled={autoDungeonActive}
+                                                    onClick={() => { playSound('click'); setSelectedDay(dayNum); }}
+                                                    className={`w-full text-left p-4 rounded-lg border transition-all ${
+                                                        isSelected 
+                                                            ? `bg-gradient-to-r from-blue-950 to-slate-900 border-blue-500 ${theme.glow}` 
+                                                            : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'
+                                                    } ${autoDungeonActive ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                >
+                                                    <div className="flex justify-between items-center mb-1 text-xs">
+                                                        <span className={`px-2 py-0.5 rounded font-bold font-hud ${isSelected ? 'bg-blue-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
+                                                            DAY {dayNum}
+                                                        </span>
+                                                        <span className="font-mono text-slate-400">+{dayData.xp} XP</span>
+                                                    </div>
+                                                    <h4 className="text-xs font-bold text-white font-hud tracking-wide mt-1">
+                                                        {dayData.title.split(' — ')[1]}
+                                                    </h4>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="lg:col-span-2 p-6 rounded-xl border border-blue-900/50 bg-slate-900/40 relative">
+                                        
+                                        {/* Auto-Dungeon Panel Overlay when running */}
+                                        {autoDungeonActive && (
+                                            <div className="absolute inset-0 bg-slate-950/95 z-30 flex flex-col items-center justify-center p-6 text-center animate-fade-in rounded-xl">
+                                                {autoDungeonPhase === 'completed' ? (
+                                                    <div className="space-y-4">
+                                                        <div className="text-emerald-400 flex justify-center mb-2"><IconCheckCircle /></div>
+                                                        <h2 className="text-2xl font-hud font-bold text-emerald-400">DUNGEON SECURE!</h2>
+                                                        <p className="text-xs text-slate-300 font-mono">Selamat, Anda berhasil mengamankan seluruh perimeter dungeon secara otomatis.</p>
+                                                        <button 
+                                                            onClick={stopAutoDungeon}
+                                                            className={`mt-4 px-6 py-2 rounded bg-gradient-to-r ${theme.grad} text-white font-hud text-xs font-bold tracking-widest`}
+                                                        >
+                                                            KEMBALI KE LOBI
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <div className="w-full max-w-sm space-y-6">
+                                                        <div>
+                                                            <span className="text-[10px] font-mono tracking-widest text-cyan-400 uppercase bg-blue-950/40 px-3 py-1 rounded border border-blue-800/40">
+                                                                {autoDungeonPhase === 'finisher'
+                                                                    ? 'CARDIO FINISHER (SEKALI JALAN)'
+                                                                    : `AUTO MODE RUNNING (RONDE ${autoRound} / ${workouts[selectedDay].rounds})`}
+                                                            </span>
+                                                            <span className="ml-2 text-[10px] font-mono tracking-widest text-amber-300 uppercase bg-amber-950/30 px-3 py-1 rounded border border-amber-700/40 inline-flex items-center gap-1">
+                                                                🔆 LAYAR TETAP MENYALA
+                                                            </span>
+                                                            <h3 className="text-xl font-bold font-hud text-white mt-4 uppercase">
+                                                                {(() => {
+                                                                    if (autoDungeonPhase === 'finisher') {
+                                                                        const finisherList = workouts[selectedDay].exercises.filter(ex => ex.once);
+                                                                        return finisherList[autoFinisherIndex]?.name || '';
+                                                                    }
+                                                                    if (autoDungeonPhase === 'exercise') {
+                                                                        const mainList = workouts[selectedDay].exercises.filter(ex => !ex.once);
+                                                                        return mainList[autoExIndex]?.name || '';
+                                                                    }
+                                                                    return 'ISTIRAHAT SEJENAK';
+                                                                })()}
+                                                            </h3>
+                                                            <p className="text-xs text-slate-400 font-mono mt-1">
+                                                                {(() => {
+                                                                    if (autoDungeonPhase === 'finisher') {
+                                                                        const finisherList = workouts[selectedDay].exercises.filter(ex => ex.once);
+                                                                        return `Aksi gerakan: ${finisherList[autoFinisherIndex]?.reps || ''}`;
+                                                                    }
+                                                                    if (autoDungeonPhase === 'exercise') {
+                                                                        const mainList = workouts[selectedDay].exercises.filter(ex => !ex.once);
+                                                                        return `Aksi gerakan: ${mainList[autoExIndex]?.reps || ''}`;
+                                                                    }
+                                                                    return 'Ambil napas dalam-dalam';
+                                                                })()}
+                                                            </p>
+                                                        </div>
+
+                                                        {/* Giant Timer countdown */}
+                                                        <div className={`w-32 h-32 rounded-full border-4 ${(autoDungeonPhase === 'exercise' || autoDungeonPhase === 'finisher') ? 'border-cyan-500' : 'border-orange-500'} flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(6,182,212,0.3)]`}>
+                                                            <span className="text-5xl font-hud font-bold text-white font-mono">{autoTimerCount}s</span>
+                                                        </div>
+
+                                                        {/* Exercise sequence list indicator */}
+                                                        <div className="space-y-1 text-left bg-slate-900/60 p-3 rounded border border-slate-800 max-h-32 overflow-y-auto no-scrollbar">
+                                                            {workouts[selectedDay].exercises.map((ex, idx) => (
+                                                                <div key={idx} className={`text-[11px] font-mono flex justify-between ${workoutChecks[`day-${selectedDay}-ex-${idx}`] ? 'text-emerald-400' : 'text-slate-500'}`}>
+                                                                    <span>{idx + 1}. {ex.name}{ex.once ? ' (sekali jalan)' : ''}</span>
+                                                                    <span>{ex.duration}s</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+
+                                                        <button 
+                                                            onClick={stopAutoDungeon}
+                                                            className="text-xs text-red-400 font-mono underline hover:text-red-300"
+                                                        >
+                                                            BATALKAN AUTO DUNGEON
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-4 mb-6">
+                                            <div>
+                                                <span className="text-xs font-hud text-blue-400 tracking-widest uppercase">TARGET DUNGEON HARI INI</span>
+                                                <h3 className="text-lg font-bold text-white font-hud mt-0.5">{workouts[selectedDay].title}</h3>
+                                                <p className="text-xs text-slate-400 italic mt-1">{workouts[selectedDay].subtitle}</p>
+                                            </div>
+                                            <span className="px-3 py-1 bg-blue-950 border border-blue-500/40 text-blue-400 text-xs font-mono font-bold rounded">
+                                                Target: {workouts[selectedDay].rounds} Ronde
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center mb-1">
+                                                <h4 className="text-[10px] font-bold font-hud text-slate-400 uppercase tracking-widest">DAFTAR GERAKAN LATIHAN:</h4>
+                                                <button 
+                                                    onClick={startAutoDungeon}
+                                                    className={`px-3 py-1 bg-gradient-to-r ${theme.grad} border ${theme.border} text-white font-hud text-[10px] font-bold tracking-wider rounded uppercase hover:scale-105 active:scale-95 transition-transform`}
+                                                >
+                                                    🤖 MASUK JALUR AUTO-MODE
+                                                </button>
+                                            </div>
+                                            {workouts[selectedDay].exercises.map((ex, idx) => {
+                                                const checkKey = `day-${selectedDay}-ex-${idx}`;
+                                                const isChecked = !!workoutChecks[checkKey];
+                                                return (
+                                                    <div 
+                                                        key={idx}
+                                                        onClick={() => handleExerciseCheck(idx)}
+                                                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                                                            isChecked ? 'bg-emerald-950/10 border-emerald-500/50 text-emerald-300' : 'bg-slate-950/60 border-slate-850 hover:border-slate-800'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-3 text-xs">
+                                                            <div className={`w-4 h-4 rounded border flex items-center justify-center ${isChecked ? 'bg-emerald-500 border-emerald-500 text-slate-950' : 'border-slate-700'}`}>
+                                                                {isChecked && <IconCheckCircle />}
+                                                            </div>
+                                                            <div>
+                                                                <span className="font-bold text-white block">{ex.name}</span>
+                                                                <span className="text-slate-400 mt-0.5 block">Dosis: {ex.reps} ({ex.duration} detik)</span>
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-[10px] font-mono text-slate-500">#{idx+1}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <div className="mt-8 p-4 rounded-lg bg-slate-950/80 border border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-blue-400"><IconClock /></div>
+                                                <div>
+                                                    <p className="text-xs font-bold font-hud text-white">RECOVERY COUNTDOWN</p>
+                                                    <p className="text-[10px] text-slate-400">Rekomendasi jeda antar-ronde: {workouts[selectedDay].restEx}s (Gerakan), {workouts[selectedDay].restRound}s (Ronde)</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-xl font-bold font-hud text-cyan-400 w-12 text-center">{timerCount}s</div>
+                                                <button
+                                                    onClick={() => { playSound('click'); setTimerActive(!timerActive); }}
+                                                    className={`px-4 py-1.5 font-hud text-xs font-bold rounded uppercase transition-colors ${timerActive ? 'bg-orange-600 text-slate-950' : 'bg-blue-600 text-white'}`}
+                                                >
+                                                    {timerActive ? 'PAUSE' : 'MULAI RECOVERY'}
+                                                </button>
+                                                <button
+                                                    onClick={() => { playSound('click'); setTimerActive(false); setTimerCount(60); }}
+                                                    className="p-1.5 text-slate-400 hover:text-white rounded bg-slate-900 text-xs"
+                                                >
+                                                    RESET
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-8 pt-6 border-t border-slate-800 text-center">
+                                            {workoutCompletedToday ? (
+                                                <div className="p-4 rounded-lg bg-emerald-950/20 border border-emerald-500/30 text-emerald-400 font-hud text-xs">
+                                                    🎉 QUEST BERHASIL DI-KLAIM UNTUK HARI INI! SILAKAN LANJUTKAN BESOK.
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={completeActiveWorkout}
+                                                    className={`px-8 py-3 bg-gradient-to-r ${theme.grad} hover:opacity-90 text-white font-hud font-bold tracking-widest text-xs uppercase rounded-lg ${theme.glow} hover:scale-[1.01] active:scale-[0.99] transition-all`}
+                                                >
+                                                    ⚔️ SELESAIKAN DUNGEON & KLAIM XP (+{workouts[selectedDay].xp} XP)
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* FOOD QUEST */}
+                            {activeTab === 'food' && (
+                                <div className="space-y-6">
+                                    <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/50">
+                                        <div className="border-b border-slate-800 pb-3 mb-6 flex flex-col sm:flex-row justify-between items-center gap-2">
+                                            <h3 className={`text-sm font-bold tracking-widest uppercase font-hud ${theme.text}`}>
+                                                🍱 SISTEM PENATAAN NUTRISI (LOW-BUDGET INDONESIA)
+                                            </h3>
+                                            <span className="px-3 py-1 rounded bg-slate-950 border border-slate-800 text-xs font-mono text-cyan-400 font-bold">
+                                                Estimasi Target: {nutrition.cal} Kcal/hari
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                                            {nutrition.meals.map((meal, idx) => {
+                                                const colors = ['text-amber-400 bg-amber-950/40', 'text-green-400 bg-green-950/40', 'text-blue-400 bg-blue-950/40', 'text-purple-400 bg-purple-950/40'];
+                                                return (
+                                                    <div key={idx} className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 relative">
+                                                        <span className={`absolute top-2 right-2 text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${colors[idx % colors.length]}`}>
+                                                            {meal.time}
+                                                        </span>
+                                                        <h4 className="font-bold text-slate-100 font-hud mb-2 uppercase tracking-wide">
+                                                            Porsi {meal.time}
+                                                        </h4>
+                                                        <p className="text-slate-300 leading-relaxed text-[11px] pt-1">
+                                                            {meal.menu}
+                                                        </p>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-4 p-3 bg-slate-950/80 rounded border border-slate-800 text-[11px] font-mono text-slate-400 text-center">
+                                            *Menu makanan beradaptasi secara otomatis untuk mencukupi defisit kalori harian Anda berdasarkan berat dan aktivitas harian.
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* EVALUATION & RIWAYAT LOGS */}
+                            {activeTab === 'logs' && (
+                                <div className="space-y-6">
+
+                                    {/* BOSS BATTLE: WEEKLY PROGRESS FRAMED AS BOSS FIGHT */}
+                                    <div className={`p-6 rounded-xl border ${bossDefeated ? 'border-emerald-500/50' : 'border-red-900/50'} bg-gradient-to-b from-slate-900 to-red-950/10 relative overflow-hidden`}>
+                                        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                                            <h3 className="text-sm font-bold tracking-widest uppercase font-hud text-red-400">
+                                                👹 BOSS BATTLE: LORD OF EXCESS WEIGHT
+                                            </h3>
+                                            <span className="text-[10px] font-mono text-slate-400">
+                                                {bossDefeated ? 'BOSS DIKALAHKAN!' : `HP TERSISA ${bossHpRemainingPct.toFixed(0)}%`}
+                                            </span>
+                                        </div>
+                                        <div className="w-full h-4 bg-slate-950 rounded-full overflow-hidden border border-red-900/40">
+                                            <div className={`h-full transition-all duration-700 ${bossDefeated ? 'bg-gradient-to-r from-emerald-500 to-cyan-400' : 'bg-gradient-to-r from-red-700 to-red-500'}`}
+                                                style={{ width: `${bossHpRemainingPct}%` }}></div>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 mt-2">
+                                            {bossDefeated
+                                                ? 'Selamat Hunter! Boss telah dikalahkan — target berat badan tercapai.'
+                                                : `Setiap kg yang turun memberi damage ke boss. Damage tersalur: ${bossDamageDealt.toFixed(1)} / ${bossTotalHp.toFixed(1)} kg.`}
+                                        </p>
+                                    </div>
+
+                                    {/* BODY SILHOUETTE DIAGRAM WITH MEASUREMENTS */}
+                                    <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/50">
+                                        <h3 className={`text-sm font-bold tracking-widest uppercase font-hud border-b border-slate-800 pb-2 mb-4 ${theme.text}`}>
+                                            🧍 PETA UKURAN TUBUH HUNTER
+                                        </h3>
+                                        <div className="flex flex-col sm:flex-row items-center gap-6">
+                                            <svg viewBox="0 0 200 340" className="w-40 sm:w-48 flex-shrink-0">
+                                                {/* Simple humanoid silhouette */}
+                                                <circle cx="100" cy="40" r="26" fill="#1e293b" stroke={theme.fill} strokeWidth="2" />
+                                                <path d="M70 70 Q100 60 130 70 L140 150 Q100 165 60 150 Z" fill="#1e293b" stroke={theme.fill} strokeWidth="2" />
+                                                <path d="M70 75 L35 140 M130 75 L165 140" stroke={theme.fill} strokeWidth="10" strokeLinecap="round" fill="none" />
+                                                <path d="M75 150 L65 300 M125 150 L135 300" stroke={theme.fill} strokeWidth="14" strokeLinecap="round" fill="none" />
+                                                {/* measurement callout lines */}
+                                                <line x1="140" y1="150" x2="185" y2="150" stroke="#475569" strokeDasharray="3,3" />
+                                                <line x1="165" y1="105" x2="195" y2="105" stroke="#475569" strokeDasharray="3,3" />
+                                            </svg>
+                                            <div className="flex-1 w-full space-y-2 text-xs font-mono">
+                                                <div className="flex justify-between p-2.5 rounded bg-slate-950/60 border border-slate-800">
+                                                    <span className="text-slate-400">⚖️ Berat Badan</span>
+                                                    <strong className="text-white">{currentWeight} kg</strong>
+                                                </div>
+                                                <div className="flex justify-between p-2.5 rounded bg-slate-950/60 border border-slate-800">
+                                                    <span className="text-slate-400">📏 Lingkar Perut</span>
+                                                    <strong className="text-white">{waistCircumference} cm</strong>
+                                                </div>
+                                                <div className="flex justify-between p-2.5 rounded bg-slate-950/60 border border-slate-800">
+                                                    <span className="text-slate-400">💪 Lingkar Lengan</span>
+                                                    <strong className="text-white">{logs[0]?.arm != null ? `${logs[0].arm} cm` : '— belum diisi'}</strong>
+                                                </div>
+                                                <div className="flex justify-between p-2.5 rounded bg-slate-950/60 border border-slate-800">
+                                                    <span className="text-slate-400">🧘 Plank Terlama</span>
+                                                    <strong className="text-white">{Math.max(0, ...logs.map(l => l.plank || 0))}s</strong>
+                                                </div>
+                                                <div className="flex justify-between p-2.5 rounded bg-slate-950/60 border border-slate-800">
+                                                    <span className="text-slate-400">🦵 Max Squat</span>
+                                                    <strong className="text-white">{Math.max(0, ...logs.map(l => l.squat || 0))}x</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/50 h-fit">
+                                        <h3 className={`text-sm font-bold tracking-widest uppercase font-hud border-b border-slate-800 pb-2 mb-4 ${theme.text}`}>
+                                            📝 EVALUASI KONDISI FISIK
+                                        </h3>
+                                        <form onSubmit={handleWeeklyLogSubmit} className="space-y-4 text-xs font-mono">
+                                            <div>
+                                                <label className="block text-slate-400 mb-1">Berat Badan Saat Ini (kg):</label>
+                                                <input 
+                                                    type="number" step="0.1" value={inputWeight}
+                                                    onChange={(e) => setInputWeight(e.target.value)}
+                                                    placeholder="Contoh: 85.1" 
+                                                    className="w-full p-2 rounded bg-slate-950 border border-slate-800 focus:border-cyan-500 focus:outline-none text-white text-sm"
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-slate-400 mb-1">Maksimum Push Up (reps):</label>
+                                                <input 
+                                                    type="number" value={inputPushups}
+                                                    onChange={(e) => setInputPushups(e.target.value)}
+                                                    placeholder="Contoh: 7" 
+                                                    className="w-full p-2 rounded bg-slate-950 border border-slate-800 focus:border-cyan-500 focus:outline-none text-white text-sm"
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-slate-400 mb-1">Lingkar Perut (cm):</label>
+                                                <input 
+                                                    type="number" value={inputWaist}
+                                                    onChange={(e) => setInputWaist(e.target.value)}
+                                                    placeholder="Contoh: 94" 
+                                                    className="w-full p-2 rounded bg-slate-950 border border-slate-800 focus:border-cyan-500 focus:outline-none text-white text-sm"
+                                                    required
+                                                />
+                                            </div>
+                                            <div className="pt-2 border-t border-slate-800/70">
+                                                <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Metrik Tambahan (Opsional)</p>
+                                            </div>
+                                            <div>
+                                                <label className="block text-slate-400 mb-1">Lingkar Lengan (cm):</label>
+                                                <input 
+                                                    type="number" step="0.1" value={inputArm}
+                                                    onChange={(e) => setInputArm(e.target.value)}
+                                                    placeholder="Contoh: 32" 
+                                                    className="w-full p-2 rounded bg-slate-950 border border-slate-800 focus:border-cyan-500 focus:outline-none text-white text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-slate-400 mb-1">Waktu Tahan Plank (detik):</label>
+                                                <input 
+                                                    type="number" value={inputPlank}
+                                                    onChange={(e) => setInputPlank(e.target.value)}
+                                                    placeholder="Contoh: 45" 
+                                                    className="w-full p-2 rounded bg-slate-950 border border-slate-800 focus:border-cyan-500 focus:outline-none text-white text-sm"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-slate-400 mb-1">Maksimum Squat (reps):</label>
+                                                <input 
+                                                    type="number" value={inputSquat}
+                                                    onChange={(e) => setInputSquat(e.target.value)}
+                                                    placeholder="Contoh: 20" 
+                                                    className="w-full p-2 rounded bg-slate-950 border border-slate-800 focus:border-cyan-500 focus:outline-none text-white text-sm"
+                                                />
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                className={`w-full py-2.5 bg-gradient-to-r ${theme.grad} text-white font-hud font-bold uppercase rounded tracking-wider text-xs transition-colors`}
+                                            >
+                                                KIRIM DATA KE SISTEM
+                                            </button>
+                                        </form>
+                                    </div>
+
+                                    <div className="lg:col-span-2 p-6 rounded-xl border border-slate-800 bg-slate-900/50">
+                                        <h3 className={`text-sm font-bold tracking-widest uppercase font-hud border-b border-slate-800 pb-2 mb-4 ${theme.text}`}>
+                                            📈 ARSIP EVALUASI MINGGUAN
+                                        </h3>
+                                        
+                                        {/* Grafik Perkembangan */}
+                                        <div className="mb-6">
+                                            {renderChart()}
+                                        </div>
+
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left text-xs font-mono">
+                                                <thead>
+                                                    <tr className="border-b border-slate-800 text-slate-500">
+                                                        <th className="py-2 px-3">Waktu Input</th>
+                                                        <th className="py-2 px-3">Berat Badan</th>
+                                                        <th className="py-2 px-3">Push Up Max</th>
+                                                        <th className="py-2 px-3">Lingkar Perut</th>
+                                                        <th className="py-2 px-3">Lengan</th>
+                                                        <th className="py-2 px-3">Plank</th>
+                                                        <th className="py-2 px-3">Squat</th>
+                                                        <th className="py-2 px-3 text-right">Target Sisa</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-900 text-slate-300">
+                                                    {logs.map((log, index) => {
+                                                        const diff = (log.weight - targetWeight).toFixed(1);
+                                                        return (
+                                                            <tr key={index} className="hover:bg-slate-950/40">
+                                                                <td className="py-3 px-3 text-white font-bold">{log.date}</td>
+                                                                <td className="py-3 px-3">{log.weight} kg</td>
+                                                                <td className="py-3 px-3">{log.pushups} reps</td>
+                                                                <td className="py-3 px-3">{log.waist} cm</td>
+                                                                <td className="py-3 px-3">{log.arm != null ? `${log.arm} cm` : '—'}</td>
+                                                                <td className="py-3 px-3">{log.plank != null ? `${log.plank}s` : '—'}</td>
+                                                                <td className="py-3 px-3">{log.squat != null ? `${log.squat}x` : '—'}</td>
+                                                                <td className={`py-3 px-3 text-right font-bold ${parseFloat(diff) <= 0 ? 'text-green-400' : 'text-cyan-400'}`}>
+                                                                    {parseFloat(diff) <= 0 ? 'GOAL ACHIEVED!' : `+${diff} kg`}
+                                                                </td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                </div>
+                            )}
+
+                        </div>
+
+                    </main>
+
+                    {/* --- BOTTOM NAV (MOBILE, THUMB-FRIENDLY) --- */}
+                    <nav className={`sm:hidden fixed bottom-0 left-0 right-0 z-40 border-t ${theme.border} bg-slate-950/95 backdrop-blur-md flex justify-around items-stretch pb-[env(safe-area-inset-bottom)]`}>
+                        {[
+                            { id: 'status', label: 'HUD', icon: IconActivity },
+                            { id: 'daily', label: 'Harian', icon: IconCheckCircle },
+                            { id: 'workout', label: 'Dungeon', icon: IconDumbbell },
+                            { id: 'food', label: 'Nutrisi', icon: IconHeart },
+                            { id: 'logs', label: 'Evaluasi', icon: IconTrendingDown },
+                        ].map((tab) => {
+                            const Icon = tab.icon;
+                            const isActive = activeTab === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => { playSound('click'); setActiveTab(tab.id); }}
+                                    className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2.5 min-w-[56px] transition-all active:scale-95 ${
+                                        isActive ? theme.text : 'text-slate-500'
+                                    }`}
+                                >
+                                    <div className={`transition-transform ${isActive ? 'scale-110' : ''}`}><Icon /></div>
+                                    <span className={`text-[9px] font-hud uppercase tracking-wide ${isActive ? 'font-bold' : ''}`}>{tab.label}</span>
+                                    {isActive && <span className={`w-4 h-0.5 rounded-full mt-0.5 ${theme.bg}`}></span>}
+                                </button>
+                            );
+                        })}
+                    </nav>
+
+                    <footer className="mt-16 border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500">
+                        <p className="font-hud uppercase tracking-widest">"SYSTEM SAYS: GET STRONGER EVERY SINGLE DAY."</p>
+                    </footer>
+
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+
+    <!-- --- PWA: DYNAMIC MANIFEST + SERVICE WORKER + INSTALL PROMPT (single-file friendly) --- -->
+    <script>
+        (function () {
+            // Simple SVG icon (Solo Leveling shield glyph) encoded as data URI, used for manifest + apple touch icon
+            const iconSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="28" fill="#020617"/><path d="M96 24 156 52v44c0 44-26 72-60 88-34-16-60-44-60-88V52z" fill="none" stroke="#22d3ee" stroke-width="8"/><text x="96" y="112" font-size="64" font-family="Arial" font-weight="900" fill="#22d3ee" text-anchor="middle">SL</text></svg>`;
+            const iconDataUri = 'data:image/svg+xml;base64,' + btoa(iconSvg);
+
+            // Build manifest and attach as blob URL
+            const manifest = {
+                name: 'Solo Leveling Fitness HUD',
+                short_name: 'SL Fitness',
+                description: 'Fitness tracker RPG bergaya Solo Leveling',
+                start_url: window.location.href,
+                display: 'standalone',
+                background_color: '#020617',
+                theme_color: '#020617',
+                icons: [
+                    { src: iconDataUri, sizes: '192x192', type: 'image/svg+xml' },
+                    { src: iconDataUri, sizes: '512x512', type: 'image/svg+xml' }
+                ]
+            };
+            const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' });
+            const manifestUrl = URL.createObjectURL(manifestBlob);
+            const manifestLink = document.getElementById('pwa-manifest-link');
+            if (manifestLink) manifestLink.setAttribute('href', manifestUrl);
+
+            // Apple touch icon (iOS doesn't read manifest icons)
+            const appleIcon = document.createElement('link');
+            appleIcon.rel = 'apple-touch-icon';
+            appleIcon.href = iconDataUri;
+            document.head.appendChild(appleIcon);
+
+            // Minimal offline-caching service worker, registered from a Blob URL
+            if ('serviceWorker' in navigator) {
+                const swCode = `
+                    const CACHE_NAME = 'sl-fitness-cache-v1';
+                    self.addEventListener('install', (e) => {
+                        self.skipWaiting();
+                        e.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll([self.registration.scope])).catch(() => {}));
+                    });
+                    self.addEventListener('activate', (e) => self.clients.claim());
+                    self.addEventListener('fetch', (e) => {
+                        e.respondWith(
+                            caches.match(e.request).then((cached) => {
+                                const fetchPromise = fetch(e.request).then((res) => {
+                                    if (res && res.status === 200 && e.request.method === 'GET') {
+                                        const resClone = res.clone();
+                                        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, resClone));
+                                    }
+                                    return res;
+                                }).catch(() => cached);
+                                return cached || fetchPromise;
+                            })
+                        );
+                    });
+                `;
+                const swBlob = new Blob([swCode], { type: 'application/javascript' });
+                const swUrl = URL.createObjectURL(swBlob);
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register(swUrl).catch((err) => console.warn('SW registration failed:', err));
+                });
+            }
+
+            // Capture install prompt for the "Install App" button inside Settings
+            window.__slDeferredInstallPrompt = null;
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                window.__slDeferredInstallPrompt = e;
+                window.dispatchEvent(new CustomEvent('sl-installable'));
+            });
+        })();
+    </script>
+</body>
+</html>
