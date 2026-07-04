@@ -1,0 +1,300 @@
+﻿<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solo Leveling Fitness HUD</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel for JSX compilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Configure Babel Standalone dynamically to use classic runtime cleanly -->
+    <script>
+        Babel.registerPreset('react-classic', {
+            presets: [
+                [Babel.availablePresets['react'], { runtime: 'classic' }]
+            ]
+        });
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@500;600;700&display=swap');
+        
+        .font-hud {
+            font-family: 'Orbitron', sans-serif;
+        }
+        .font-sub {
+            font-family: 'Rajdhani', sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #020617;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1e3a8a;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3b82f6;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-gray-100 min-h-screen select-none font-sub">
+
+    <div id="root"></div>
+
+    <script type="text/babel" data-presets="react-classic">
+        const { useState, useEffect } = React;
+
+        // --- CUSTOM INLINE SVG ICONS FOR OFFLINE COMPATIBILITY ---
+        const IconShield = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        );
+        const IconFlame = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+        );
+        const IconActivity = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        );
+        const IconHeart = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+        );
+        const IconAward = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+        );
+        const IconTrendingDown = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+        );
+        const IconSparkles = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+        );
+        const IconDroplet = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22a7 7 0 0 0 7-7c0-4.3-7-11-7-11S5 10.7 5 15a7 7 0 0 0 7 7z"/></svg>
+        );
+        const IconFootprints = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16v-2.38C4 11.5 5.88 9.85 6 7.07l.07-1.57A1.62 1.62 0 0 1 7.74 4h.13c.83.05 1.48.77 1.43 1.6l-.08 1.4C9.1 9.8 11 11.4 11 13.5V16c0 1.1-.9 2-2 2H6a2 2 0 0 1-2-2z"/><path d="M13 16v-2.38c0-2.12 1.88-3.77 2-6.55l.07-1.57A1.62 1.62 0 0 1 16.74 4h.13c.83.05 1.48.77 1.43 1.6l-.08 1.4c-.12 2.8 1.78 4.4 1.78 6.5V16c0 1.1-.9 2-2 2h-3a2 2 0 0 1-2-2z"/></svg>
+        );
+        const IconMoon = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+        );
+        const IconDumbbell = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6.5 6.5 11 11"/><path d="m21 21-1-1"/><path d="m3 3 1 1"/><path d="m18 22 4-4"/><path d="m2 6 4-4"/><path d="m3 10 7-7"/><path d="m14 21 7-7"/></svg>
+        );
+        const IconCheckCircle = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        );
+        const IconAlertTriangle = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        );
+        const IconVolume2 = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+        );
+        const IconVolumeX = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
+        );
+        const IconRefresh = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        );
+        const IconClock = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        );
+        const IconUser = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        );
+
+        function App() {
+            // --- LOAD INITIAL PERSISTED STATE ---
+            const [playerName, setPlayerName] = useState(() => localStorage.getItem('sl_playerName') || "Hunter");
+            const [currentWeight, setCurrentWeight] = useState(() => parseFloat(localStorage.getItem('sl_currentWeight')) || 86);
+            const [maxPushups, setMaxPushups] = useState(() => parseInt(localStorage.getItem('sl_maxPushups')) || 5);
+            const [waistCircumference, setWaistCircumference] = useState(() => parseFloat(localStorage.getItem('sl_waistCircumference')) || 95);
+            
+            const [xp, setXp] = useState(() => parseInt(localStorage.getItem('sl_xp')) || 0);
+            const [skillLevel, setSkillLevel] = useState(() => parseInt(localStorage.getItem('sl_skillLevel')) || 1);
+            const xpToNextLevel = 500;
+            
+            const [stats, setStats] = useState(() => {
+                const saved = localStorage.getItem('sl_stats');
+                return saved ? JSON.parse(saved) : { STR: 15, AGI: 25, END: 30, VIT: 35, DISC: 10 };
+            });
+
+            const [streak, setStreak] = useState(() => parseInt(localStorage.getItem('sl_streak')) || 1); // Dimulai dari Hari ke-1
+            const [isDisciplineGateUnlocked, setIsDisciplineGateUnlocked] = useState(() => localStorage.getItem('sl_disciplineGate') === 'true');
+
+            const [dailyQuests, setDailyQuests] = useState(() => {
+                const saved = localStorage.getItem('sl_dailyQuests');
+                return saved ? JSON.parse(saved) : { steps: false, water: false, sleep: false };
+            });
+            const [workoutPenaltyClaimed, setWorkoutPenaltyClaimed] = useState(() => localStorage.getItem('sl_penaltyClaimed') === 'true');
+
+            const [activeTab, setActiveTab] = useState('status');
+            const [selectedDay, setSelectedDay] = useState(1);
+            const [workoutChecks, setWorkoutChecks] = useState({});
+            const [workoutCompletedToday, setWorkoutCompletedToday] = useState(() => localStorage.getItem('sl_workoutCompletedToday') === 'true');
+            
+            const [timerCount, setTimerCount] = useState(60);
+            const [timerActive, setTimerActive] = useState(false);
+
+            const [logs, setLogs] = useState(() => {
+                const saved = localStorage.getItem('sl_logs');
+                return saved ? JSON.parse(saved) : [{ date: 'Awal (Hari 1)', weight: 86, pushups: 5, waist: 95 }];
+            });
+
+            const [inputWeight, setInputWeight] = useState('');
+            const [inputPushups, setInputPushups] = useState('');
+            const [inputWaist, setInputWaist] = useState('');
+
+            const [soundEnabled, setSoundEnabled] = useState(true);
+            const [systemAlert, setSystemAlert] = useState(null);
+
+            // --- SAVE TO LOCALSTORAGE ON CHANGES ---
+            useEffect(() => {
+                localStorage.setItem('sl_playerName', playerName);
+                localStorage.setItem('sl_currentWeight', currentWeight);
+                localStorage.setItem('sl_maxPushups', maxPushups);
+                localStorage.setItem('sl_waistCircumference', waistCircumference);
+                localStorage.setItem('sl_xp', xp);
+                localStorage.setItem('sl_skillLevel', skillLevel);
+                localStorage.setItem('sl_stats', JSON.stringify(stats));
+                localStorage.setItem('sl_streak', streak);
+                localStorage.setItem('sl_disciplineGate', isDisciplineGateUnlocked);
+                localStorage.setItem('sl_dailyQuests', JSON.stringify(dailyQuests));
+                localStorage.setItem('sl_penaltyClaimed', workoutPenaltyClaimed);
+                localStorage.setItem('sl_workoutCompletedToday', workoutCompletedToday);
+                localStorage.setItem('sl_logs', JSON.stringify(logs));
+            }, [playerName, currentWeight, maxPushups, waistCircumference, xp, skillLevel, stats, streak, isDisciplineGateUnlocked, dailyQuests, workoutPenaltyClaimed, workoutCompletedToday, logs]);
+
+            // --- AUDIO SYNTHESIS ENGINE ---
+            const playSound = (type) => {
+                if (!soundEnabled) return;
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioContext) return;
+                    const ctx = new AudioContext();
+                    
+                    if (type === 'click') {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(800, ctx.currentTime);
+                        osc.frequency.exponentialRampToValueAtTime(1500, ctx.currentTime + 0.08);
+                        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start();
+                        osc.stop(ctx.currentTime + 0.08);
+                    } else if (type === 'levelUp') {
+                        const now = ctx.currentTime;
+                        const freqs = [523.25, 659.25, 783.99, 1046.50];
+                        freqs.forEach((freq, index) => {
+                            const osc = ctx.createOscillator();
+                            const gain = ctx.createGain();
+                            osc.type = 'sawtooth';
+                            osc.frequency.setValueAtTime(freq, now + index * 0.1);
+                            gain.gain.setValueAtTime(0, now + index * 0.1);
+                            gain.gain.linearRampToValueAtTime(0.08, now + index * 0.1 + 0.02);
+                            gain.gain.exponentialRampToValueAtTime(0.001, now + index * 0.1 + 0.4);
+                            osc.connect(gain);
+                            gain.connect(ctx.destination);
+                            osc.start(now + index * 0.1);
+                            osc.stop(now + index * 0.1 + 0.5);
+                        });
+                    } else if (type === 'questComplete') {
+                        const osc1 = ctx.createOscillator();
+                        const osc2 = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc1.type = 'triangle';
+                        osc2.type = 'sine';
+                        osc1.frequency.setValueAtTime(600, ctx.currentTime);
+                        osc1.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.15);
+                        osc2.frequency.setValueAtTime(1200, ctx.currentTime);
+                        osc2.frequency.exponentialRampToValueAtTime(2400, ctx.currentTime + 0.15);
+                        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                        osc1.connect(gain);
+                        osc2.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc1.start();
+                        osc2.start();
+                        osc1.stop(ctx.currentTime + 0.2);
+                        osc2.stop(ctx.currentTime + 0.2);
+                    } else if (type === 'penalty') {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sawtooth';
+                        osc.frequency.setValueAtTime(180, ctx.currentTime);
+                        osc.frequency.linearRampToValueAtTime(90, ctx.currentTime + 0.3);
+                        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start();
+                        osc.stop(ctx.currentTime + 0.4);
+                    }
+                } catch (e) {
+                    console.warn("Audio Context blocked/unsupported:", e);
+                }
+            };
+
+            const triggerAlert = (title, message, isWarning = false) => {
+                playSound(isWarning ? 'penalty' : 'questComplete');
+                setSystemAlert({ title, message, isWarning });
+            };
+
+            // --- SYSTEM RECOVERY TIMER ---
+            useEffect(() => {
+                let interval = null;
+                if (timerActive && timerCount > 0) {
+                    interval = setInterval(() => {
+                        setTimerCount((prev) => prev - 1);
+                    }, 1000);
+                } else if (timerCount === 0) {
+                    setTimerActive(false);
+                    setTimerCount(60);
+                    triggerAlert("SYSTEM MESSAGE", "Masa pemulihan selesai! Bersiaplah menghadapi ronde selanjutnya.", false);
+                }
+                return () => clearInterval(interval);
+            }, [timerActive, timerCount]);
+
+            // --- GET DIFFICULTY BASED ON WEIGHT ---
+            const getRank = () => {
+                if (currentWeight > 84) return { rank: "RANK E (Beginner - Joint Friendly)", class: "text-red-400 border-red-500/50 bg-red-950/20" };
+                if (currentWeight > 80) return { rank: "RANK D (Intermediate-Beginner)", class: "text-amber-400 border-amber-500/50 bg-amber-950/20" };
+                return { rank: "RANK C (Intermediate / Shadow Monarch Recruit)", class: "text-cyan-400 border-cyan-500/50 bg-cyan-950/20" };
+            };
+
+            // --- GENERATE DYNAMIC WORKOUT DATA ACCORDING TO DIFFICULTY (WEIGHT) ---
+            const generateWorkouts = (weight) => {
+                if (weight > 84) {
+                    // Rank E: Joint-friendly, modified reps, safe squats
+                    return {
+                        1: {
+                            title: "DAY 1 — Strength Quest (Rank E)",
+                            subtitle: "⚔️ Goblin Army Patrol",
+                            xp: 50,
+                            rounds: 3,
+                            exercises: [
+                                { name: "Air Squat (Fokus form aman, pantat sejajar lutut)", reps: "12 reps" },
+                                { name: "Knee Push up (Tumpuan lutut di matras)", reps: "5 reps" },
+                                { name: "Dumbbell Row (Beban ringan-menengah)", reps: "10 reps/sisi" },
+                                { name: "Dumbbell Shoulder Press (Duduk tegak)", reps: "8 reps" },
+                                { name: "Plank (Fokus kunci perut, punggung rata)", reps: "20 detik" }
+                            ],
+                            rest: "60-90 detik tiap akhir ronde"
+                        },
+                        2: {
+                            title: "DAY 2 — Fat Burning Quest (Rank E)",
+                            subtitle: "🔥 Low-Impact Beast Hunt",
+                            xp: 45,
+                            rounds: 3,
+                            exercises: [
+                                { name: "Step Jack (Ganti jumping jack konvensional demi sendi)", reps: "30 reps" },
+                                { name: "Slow Mountain Climber", reps: "16 reps (total)" },
+                   
